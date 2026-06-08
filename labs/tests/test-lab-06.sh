@@ -21,8 +21,8 @@ kubectl create namespace "$NS" &>/dev/null
 
 echo "Step 1: Deploy Sample Applications"
 
-envsubst < "$LAB_DIR/app-v1.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/app-v2.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/app-v1.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/app-v2.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" app-v1 90
 wait_for_deploy "$NS" app-v2 90
 
@@ -60,7 +60,7 @@ fi
 echo ""
 echo "Step 3: Host-Based Ingress"
 
-envsubst < "$LAB_DIR/ingress-host.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/ingress-host.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 assert_cmd "host-based ingress created" kubectl get ingress app-ingress-host -n "$NS"
@@ -80,7 +80,7 @@ assert_contains "second host contains v2-" "$HOST2" "v2-"
 echo ""
 echo "Step 4: Path-Based Ingress"
 
-envsubst < "$LAB_DIR/ingress-path.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/ingress-path.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 assert_cmd "path-based ingress created" kubectl get ingress app-ingress-path -n "$NS"
@@ -112,7 +112,7 @@ kubectl create secret tls lab-tls-secret \
 
 assert_cmd "TLS secret lab-tls-secret created" kubectl get secret lab-tls-secret -n "$NS"
 
-envsubst < "$LAB_DIR/ingress-tls.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/ingress-tls.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 assert_cmd "TLS ingress created" kubectl get ingress app-ingress-tls -n "$NS"
@@ -131,7 +131,7 @@ rm -f /tmp/tls-ingress-$$.key /tmp/tls-ingress-$$.crt
 echo ""
 echo "Step 6: Ingress Annotations"
 
-envsubst < "$LAB_DIR/ingress-annotations.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/ingress-annotations.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 assert_cmd "annotated ingress created" kubectl get ingress app-ingress-advanced -n "$NS"
@@ -158,12 +158,12 @@ echo ""
 echo "Step 7: Gateway API"
 
 if kubectl get crd gatewayclasses.gateway.networking.k8s.io &>/dev/null; then
-  envsubst < "$LAB_DIR/gateway.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/gateway.yaml" | kubectl apply -f - &>/dev/null
   sleep 3
 
   assert_cmd "GatewayClass created" kubectl get gatewayclass "lab-gateway-class-$STUDENT_NAME"
 
-  envsubst < "$LAB_DIR/httproute.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/httproute.yaml" | kubectl apply -f - &>/dev/null
   sleep 3
 
   assert_cmd "HTTPRoute created" kubectl get httproute app-route -n "$NS"
@@ -187,7 +187,7 @@ fi
 echo ""
 echo "Step 8: Egress NetworkPolicy"
 
-envsubst < "$LAB_DIR/egress-policy.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/egress-policy.yaml" | kubectl apply -f - &>/dev/null
 sleep 2
 
 assert_cmd "egress policy exists" kubectl get networkpolicy restrict-egress -n "$NS"

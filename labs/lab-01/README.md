@@ -67,9 +67,21 @@ aws sts get-caller-identity
 
 ---
 
-## Step 3: Install Required Tools
+## Step 3: Get the Lab Materials and Install Required Tools
 
-**Quick Setup:** Steps 3 and 4 can be automated with the setup script. After completing Step 2, run the following command and then skip to **Step 5**.
+### Get the Lab Materials
+
+Clone the course repository into your Cloud9 workspace — every lab starts from a directory inside it:
+
+```bash
+cd ~/environment
+git clone https://github.com/jwkidd3/verisign_k8s.git
+cd verisign_k8s/labs/lab-01
+```
+
+> ⚠️ **Choose your student name now.** It is used in namespace names, service accounts, and app names across all labs, so it must be **lowercase letters, digits, and hyphens only — no dots, underscores, or uppercase — and 20 characters or fewer** (e.g., `jsmith`, `alice-w`).
+
+**Quick Setup:** Steps 3 and 4 can be automated with the setup script. After completing Step 2 and the clone above, run the following command and then skip to **Step 5**.
 
 ```bash
 bash scripts/setup-cloud9.sh <your-name>
@@ -82,7 +94,7 @@ If you prefer to install each tool individually, follow the sections below.
 ### kubectl
 
 ```bash
-curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable-1.33.txt)/bin/linux/amd64/kubectl"
 chmod +x kubectl
 sudo mv kubectl /usr/local/bin/
 kubectl version --client
@@ -153,7 +165,7 @@ aws eks update-kubeconfig \
   --region us-east-2
 ```
 
-Set your unique student name and verify connectivity:
+Set your unique student name and verify connectivity (lowercase letters, digits, and hyphens only — same value you gave the setup script):
 
 ```bash
 export STUDENT_NAME=<your-name>

@@ -40,7 +40,7 @@ echo ""
 echo "Step 2: ConfigMap from Files"
 
 cp "$LAB_DIR/nginx.conf" /tmp/nginx.conf
-envsubst < "$LAB_DIR/app.properties" > /tmp/app.properties
+envsubst '$STUDENT_NAME' < "$LAB_DIR/app.properties" > /tmp/app.properties
 
 kubectl create configmap app-files -n "$NS" \
   --from-file=nginx.conf=/tmp/nginx.conf \
@@ -61,7 +61,7 @@ rm -f /tmp/nginx.conf /tmp/app.properties
 echo ""
 echo "Step 3: Pod with envFrom"
 
-envsubst < "$LAB_DIR/pod-envfrom.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-envfrom.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" env-from-demo 60
 
 ENV_APP=$(kubectl exec env-from-demo -n "$NS" -- printenv APP_ENV 2>/dev/null)
@@ -75,7 +75,7 @@ assert_eq "envFrom injects APP_LOG_LEVEL=info" "info" "$ENV_LOG"
 echo ""
 echo "Step 4: Pod with valueFrom"
 
-envsubst < "$LAB_DIR/pod-valuefrom.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-valuefrom.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" value-from-demo 60
 
 VF_ENV=$(kubectl exec value-from-demo -n "$NS" -- printenv ENVIRONMENT 2>/dev/null)
@@ -89,7 +89,7 @@ assert_eq "valueFrom maps APP_LOG_LEVEL -> LOG_LEVEL" "info" "$VF_LOG"
 echo ""
 echo "Step 5: Pod with Volume Mount"
 
-envsubst < "$LAB_DIR/pod-volume-mount.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-volume-mount.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" volume-mount-demo 60
 
 VOL_NGINX=$(kubectl exec volume-mount-demo -n "$NS" -- cat /etc/nginx/conf.d/default.conf 2>/dev/null)
@@ -151,7 +151,7 @@ rm -f /tmp/tls-$$.key /tmp/tls-$$.crt
 echo ""
 echo "Step 8: Consume Secret as Env Vars"
 
-envsubst < "$LAB_DIR/pod-secret-env.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-secret-env.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" secret-env-demo 60
 
 SEC_HOST=$(kubectl exec secret-env-demo -n "$NS" -- printenv DB_HOST 2>/dev/null)
@@ -165,7 +165,7 @@ assert_eq "secret env DB_USER injected" "app_user" "$SEC_USER"
 echo ""
 echo "Step 9: Consume Secret as Volume Mount"
 
-envsubst < "$LAB_DIR/pod-secret-volume.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-secret-volume.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" secret-vol-demo 60
 
 SV_USER=$(kubectl exec secret-vol-demo -n "$NS" -- cat /etc/db-creds/DB_USERNAME 2>/dev/null)
@@ -180,7 +180,7 @@ assert_eq "secret volume defaultMode is 0400 (256)" "256" "$SV_MODE"
 echo ""
 echo "Step 10: Immutable ConfigMap"
 
-envsubst < "$LAB_DIR/immutable-config.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/immutable-config.yaml" | kubectl apply -f - &>/dev/null
 
 IMM=$(kubectl get configmap immutable-app-config -n "$NS" -o jsonpath='{.immutable}' 2>/dev/null)
 assert_eq "immutable-app-config immutable=true" "true" "$IMM"
@@ -193,7 +193,7 @@ assert_eq "immutable-app-config APP_VERSION=2.1.0" "2.1.0" "$IMM_VER"
 echo ""
 echo "Step 11: Projected Volume"
 
-envsubst < "$LAB_DIR/pod-projected.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-projected.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" projected-demo 60
 
 PROJ_ENV=$(kubectl exec projected-demo -n "$NS" -- cat /etc/projected/APP_ENV 2>/dev/null)
@@ -216,7 +216,7 @@ CSS_READY=$(kubectl get clustersecretstore vault-store -o jsonpath='{.status.con
 
 if [ "$VAULT_PODS" -gt 0 ] && [ "$ESO_PODS" -gt 0 ] && [ "$CSS_READY" = "True" ]; then
   # Apply ExternalSecret
-  envsubst < "$LAB_DIR/external-secret.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/external-secret.yaml" | kubectl apply -f - &>/dev/null
 
   # Wait for the secret to sync (up to 30s)
   for i in $(seq 1 15); do

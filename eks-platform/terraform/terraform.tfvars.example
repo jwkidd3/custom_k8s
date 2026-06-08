@@ -1,6 +1,6 @@
 aws_region           = "us-east-2"
 cluster_name         = "platform-lab"
-cluster_version      = "1.30"
+cluster_version      = "1.33"
 vpc_cidr             = "10.0.0.0/16"
 node_instance_type   = "m5.2xlarge"
 node_desired         = 6

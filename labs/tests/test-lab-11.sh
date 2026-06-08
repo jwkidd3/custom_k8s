@@ -24,7 +24,7 @@ kubectl create configmap app-v1-page \
   --from-literal=index.html='<h1 style="color:blue">Application v1</h1><p>Version: 1.0.0</p>' \
   -n "$NS" &>/dev/null
 
-envsubst < "$LAB_DIR/app-deploy-v1.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/app-deploy-v1.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" webapp 90
 
 V1_IMAGE=$(kubectl get deployment webapp -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
@@ -113,9 +113,9 @@ fi
 echo ""
 echo "Step 5 — Blue-Green Deployment:"
 
-envsubst < "$LAB_DIR/blue-deploy.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/green-deploy.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/bg-service.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/blue-deploy.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/green-deploy.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/bg-service.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" webapp-blue 90
 wait_for_deploy "$NS" webapp-green 90
 
@@ -148,9 +148,9 @@ assert_contains "service returns GREEN after switch" "$GREEN_RESPONSE" "GREEN"
 echo ""
 echo "Step 6 — Canary Deployment:"
 
-envsubst < "$LAB_DIR/canary-stable.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/canary-new.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/canary-service.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/canary-stable.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/canary-new.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/canary-service.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" webapp-stable 90
 wait_for_deploy "$NS" webapp-canary 90
 
@@ -206,7 +206,7 @@ fi
 echo ""
 echo "Step 8 — Pod Disruption Budget:"
 
-envsubst < "$LAB_DIR/pdb.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pdb.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 PDB_MIN=$(kubectl get pdb webapp-pdb -n "$NS" -o jsonpath='{.spec.minAvailable}' 2>/dev/null)

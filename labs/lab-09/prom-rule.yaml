@@ -9,7 +9,7 @@ spec:
   - name: pod-restarts
     rules:
     - alert: HighPodRestartCount
-      expr: increase(kube_pod_container_status_restarts_total[1h]) > 3
+      expr: increase(kube_pod_container_status_restarts_total{namespace="obs-lab-$STUDENT_NAME"}[1h]) > 3
       for: 5m
       labels: { severity: warning }
       annotations:
@@ -17,5 +17,5 @@ spec:
           Pod {{ $labels.pod }} restarted
           {{ $value }} times
     - alert: PodCrashLooping
-      expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 0
+      expr: rate(kube_pod_container_status_restarts_total{namespace="obs-lab-$STUDENT_NAME"}[15m]) * 60 * 15 > 0
       labels: { severity: critical }

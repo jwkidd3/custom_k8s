@@ -20,8 +20,8 @@ kubectl create namespace "$NS" &>/dev/null
 
 echo "Deployments:"
 
-envsubst < "$LAB_DIR/backend-deployment.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/frontend-deployment.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/backend-deployment.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/frontend-deployment.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" backend 120
 wait_for_deploy "$NS" frontend 120
 
@@ -48,7 +48,7 @@ assert_eq "backend has readiness probe on /get" "/get" "$BACKEND_PROBE"
 echo ""
 echo "ClusterIP Service:"
 
-envsubst < "$LAB_DIR/backend-svc.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/backend-svc.yaml" | kubectl apply -f - &>/dev/null
 sleep 5
 
 SVC_TYPE=$(kubectl get svc backend-svc -n "$NS" -o jsonpath='{.spec.type}' 2>/dev/null)
@@ -182,7 +182,7 @@ fi
 echo ""
 echo "NodePort Service:"
 
-envsubst < "$LAB_DIR/frontend-nodeport.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/frontend-nodeport.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 NP_TYPE=$(kubectl get svc frontend-nodeport -n "$NS" -o jsonpath='{.spec.type}' 2>/dev/null)
@@ -205,7 +205,7 @@ assert_eq "frontend-nodeport service port is 80" "80" "$NP_PORT"
 echo ""
 echo "Headless Service:"
 
-envsubst < "$LAB_DIR/backend-headless.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/backend-headless.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 HEADLESS_CIP=$(kubectl get svc backend-headless -n "$NS" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
@@ -249,7 +249,7 @@ fi
 echo ""
 echo "LoadBalancer Service:"
 
-envsubst < "$LAB_DIR/frontend-lb.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/frontend-lb.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 LB_TYPE=$(kubectl get svc frontend-lb -n "$NS" -o jsonpath='{.spec.type}' 2>/dev/null)

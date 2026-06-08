@@ -13,7 +13,7 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.30"
+  default     = "1.33"
 }
 
 variable "vpc_cidr" {
@@ -83,13 +83,6 @@ variable "student_role_name" {
   description = "IAM role name for Cloud9 student instances (also used as instance profile name)"
   type        = string
   default     = "k8s-lab-role"
-}
-
-variable "splunk_hec_token" {
-  description = "Splunk HEC token (generated after Splunk deploys)"
-  type        = string
-  default     = ""
-  sensitive   = true
 }
 
 variable "vault_root_token" {

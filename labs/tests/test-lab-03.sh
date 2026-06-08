@@ -49,7 +49,7 @@ fi
 echo ""
 echo "PersistentVolumeClaim:"
 
-envsubst < "$LAB_DIR/lab-pvc.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/lab-pvc.yaml" | kubectl apply -f - &>/dev/null
 
 sleep 3
 
@@ -76,7 +76,7 @@ assert_eq "PVC requests 1Gi" "1Gi" "$PVC_SIZE"
 echo ""
 echo "Data Writer Pod:"
 
-envsubst < "$LAB_DIR/lab-writer-pod.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/lab-writer-pod.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" data-writer 120
 sleep 5
 
@@ -109,7 +109,7 @@ kubectl delete pod data-writer -n "$NS" --timeout=30s &>/dev/null
 PVC_STATUS=$(kubectl get pvc lab-data-pvc -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null)
 assert_eq "PVC stays Bound after pod deletion" "Bound" "$PVC_STATUS"
 
-envsubst < "$LAB_DIR/lab-reader-pod.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/lab-reader-pod.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" data-reader 120
 
 READ=$(kubectl exec data-reader -n "$NS" -- cat /data/testfile.txt 2>/dev/null)
@@ -124,8 +124,8 @@ kubectl delete pod data-reader -n "$NS" --timeout=30s &>/dev/null
 echo ""
 echo "StatefulSet:"
 
-envsubst < "$LAB_DIR/lab-headless-svc.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/lab-statefulset.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/lab-headless-svc.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/lab-statefulset.yaml" | kubectl apply -f - &>/dev/null
 
 # Verify headless service
 HEADLESS_CIP=$(kubectl get svc web-headless -n "$NS" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)

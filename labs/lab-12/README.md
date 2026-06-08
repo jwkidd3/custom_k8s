@@ -40,11 +40,11 @@ kubectl config set-context --current --namespace=default
 ```bash
 helm version
 
-helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add podinfo https://stefanprodan.github.io/podinfo
 helm repo update
 
-helm search repo nginx
-helm show chart bitnami/nginx
+helm search repo podinfo
+helm show chart podinfo/podinfo
 ```
 
 > If `helm` is not found: `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash`
@@ -56,7 +56,7 @@ helm show chart bitnami/nginx
 ```bash
 kubectl create namespace helm-lab-$STUDENT_NAME
 
-helm install my-nginx bitnami/nginx \
+helm install my-podinfo podinfo/podinfo \
   --namespace helm-lab-$STUDENT_NAME \
   --set replicaCount=2 \
   --set service.type=ClusterIP
@@ -71,11 +71,11 @@ kubectl get pods -n helm-lab-$STUDENT_NAME -w
 ```bash
 helm list -n helm-lab-$STUDENT_NAME
 
-helm get values my-nginx -n helm-lab-$STUDENT_NAME
+helm get values my-podinfo -n helm-lab-$STUDENT_NAME
 
-helm get values my-nginx -n helm-lab-$STUDENT_NAME --all
+helm get values my-podinfo -n helm-lab-$STUDENT_NAME --all
 
-helm get manifest my-nginx -n helm-lab-$STUDENT_NAME
+helm get manifest my-podinfo -n helm-lab-$STUDENT_NAME
 ```
 
 ---
@@ -83,7 +83,7 @@ helm get manifest my-nginx -n helm-lab-$STUDENT_NAME
 ## Step 4: Upgrade the Release
 
 ```bash
-helm upgrade my-nginx bitnami/nginx \
+helm upgrade my-podinfo podinfo/podinfo \
   --namespace helm-lab-$STUDENT_NAME \
   --set replicaCount=3 \
   --set service.type=ClusterIP
@@ -99,14 +99,14 @@ kubectl get pods -n helm-lab-$STUDENT_NAME
 ## Step 5: Release History and Rollback
 
 ```bash
-helm history my-nginx -n helm-lab-$STUDENT_NAME
+helm history my-podinfo -n helm-lab-$STUDENT_NAME
 
-helm rollback my-nginx 1 -n helm-lab-$STUDENT_NAME
+helm rollback my-podinfo 1 -n helm-lab-$STUDENT_NAME
 
 helm list -n helm-lab-$STUDENT_NAME
 kubectl get pods -n helm-lab-$STUDENT_NAME
 
-helm history my-nginx -n helm-lab-$STUDENT_NAME
+helm history my-podinfo -n helm-lab-$STUDENT_NAME
 ```
 
 > ✅ After rollback, the release is at `REVISION: 3` with 2 replicas. A rollback creates a new revision.
@@ -221,7 +221,7 @@ kubectl exec -n helm-lab-$STUDENT_NAME \
 ## Step 10: Clean Up
 
 ```bash
-helm uninstall my-nginx -n helm-lab-$STUDENT_NAME
+helm uninstall my-podinfo -n helm-lab-$STUDENT_NAME
 helm uninstall my-custom-app -n helm-lab-$STUDENT_NAME
 kubectl delete namespace helm-lab-$STUDENT_NAME
 rm -rf mychart/ mychart-*.tgz

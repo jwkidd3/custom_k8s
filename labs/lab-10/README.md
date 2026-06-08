@@ -69,7 +69,7 @@ kubectl config set-context --current --namespace=probes-lab-$STUDENT_NAME
 
 <!-- Creates a basic nginx Deployment with no health probes -->
 ```bash
-envsubst < no-probes-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < no-probes-app.yaml | kubectl apply -f -
 ```
 
 ### Simulate a Failure
@@ -96,7 +96,7 @@ kubectl exec $curl_pod -- curl -s -o /dev/null -w "%{http_code}" localhost:80
 
 <!-- Creates an nginx Deployment with an HTTP liveness probe on / -->
 ```bash
-envsubst < liveness-http.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < liveness-http.yaml | kubectl apply -f -
 ```
 
 > 💡 **Probe defaults:** `failureThreshold: 3`, `timeoutSeconds: 1`, `periodSeconds: 10`. Any HTTP status 200–399 counts as success.
@@ -129,7 +129,7 @@ kubectl describe pod $LIVE_POD | grep -A 5 "Liveness"
 
 <!-- Creates a Deployment with readiness + liveness probes and a Service -->
 ```bash
-envsubst < readiness-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < readiness-app.yaml | kubectl apply -f -
 ```
 
 > 💡 The readiness probe checks `/ready` while the liveness probe checks `/`. The `successThreshold` of 2 means the pod must pass two consecutive checks before being added to the endpoint list.
@@ -192,7 +192,7 @@ kubectl get endpoints readiness-svc
 
 <!-- Creates a slow-starting app with startup, liveness, and readiness probes -->
 ```bash
-envsubst < slow-start-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < slow-start-app.yaml | kubectl apply -f -
 ```
 
 > 💡 The startup probe allows up to 60 seconds (12 failures x 5 seconds) for the application to start. During this time, liveness and readiness probes are disabled.
@@ -234,7 +234,7 @@ kubectl get pods -l app=slow-start-app -w
 
 <!-- Creates a Deployment with tuned liveness/readiness probe parameters -->
 ```bash
-envsubst < tuned-probes.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < tuned-probes.yaml | kubectl apply -f -
 ```
 
 > 💡 **Analysis:**
@@ -257,7 +257,7 @@ envsubst < tuned-probes.yaml | kubectl apply -f -
 TCP probes check whether a port is open — useful for non-HTTP services like Redis, databases, or message queues:
 
 ```bash
-envsubst < tcp-probe-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < tcp-probe-app.yaml | kubectl apply -f -
 
 kubectl get pods -l app=tcp-probe-app
 kubectl describe pod -l app=tcp-probe-app | grep -A 3 "Liveness\|Readiness"
@@ -272,7 +272,7 @@ kubectl describe pod -l app=tcp-probe-app | grep -A 3 "Liveness\|Readiness"
 Exec probes run a command inside the container — useful for custom health checks:
 
 ```bash
-envsubst < exec-probe-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < exec-probe-app.yaml | kubectl apply -f -
 
 kubectl get pods -l app=exec-probe-app
 kubectl describe pod -l app=exec-probe-app | grep -A 3 "Liveness"
@@ -287,7 +287,7 @@ kubectl describe pod -l app=exec-probe-app | grep -A 3 "Liveness"
 Configure graceful shutdown to allow in-flight requests to complete before termination:
 
 ```bash
-envsubst < graceful-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < graceful-app.yaml | kubectl apply -f -
 
 kubectl get pods -l app=graceful-app
 kubectl get pod -l app=graceful-app -o jsonpath='{.items[0].spec.terminationGracePeriodSeconds}'

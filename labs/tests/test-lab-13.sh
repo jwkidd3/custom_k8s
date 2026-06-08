@@ -173,7 +173,7 @@ if kubectl get pods -n argocd --no-headers 2>/dev/null | grep -q Running; then
   assert_cmd "Application CRD exists" kubectl get crd applications.argoproj.io
 
   # Apply argocd-app.yaml with envsubst
-  envsubst < "$LAB_DIR/argocd-app.yaml" | kubectl apply -f - &>/dev/null 2>&1
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/argocd-app.yaml" | kubectl apply -f - &>/dev/null 2>&1
   sleep 3
 
   APP_EXISTS=$(kubectl get application "cicd-demo-$STUDENT_NAME" -n argocd --no-headers 2>/dev/null | wc -l | tr -d ' ')
@@ -277,32 +277,32 @@ if kubectl get pods -n flux-system --no-headers 2>/dev/null | grep -q Running; t
   # Step 10: Create namespace and apply HelmRepository
   kubectl create namespace "$NS_FLUX" &>/dev/null
 
-  envsubst < "$LAB_DIR/helm-source.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/helm-source.yaml" | kubectl apply -f - &>/dev/null
   sleep 5
 
-  HR_COUNT=$(kubectl get helmrepository "bitnami-$STUDENT_NAME" -n flux-system --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  HR_COUNT=$(kubectl get helmrepository "podinfo-$STUDENT_NAME" -n flux-system --no-headers 2>/dev/null | wc -l | tr -d ' ')
   assert_eq "HelmRepository created" "1" "$HR_COUNT"
 
-  HR_URL=$(kubectl get helmrepository "bitnami-$STUDENT_NAME" -n flux-system \
+  HR_URL=$(kubectl get helmrepository "podinfo-$STUDENT_NAME" -n flux-system \
     -o jsonpath='{.spec.url}' 2>/dev/null)
-  assert_contains "HelmRepository points to bitnami" "$HR_URL" "bitnami"
+  assert_contains "HelmRepository points to podinfo" "$HR_URL" "podinfo"
 
   # Apply HelmRelease
-  envsubst < "$LAB_DIR/helm-release.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/helm-release.yaml" | kubectl apply -f - &>/dev/null
   sleep 5
 
-  HELM_REL_COUNT=$(kubectl get helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  HELM_REL_COUNT=$(kubectl get helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" --no-headers 2>/dev/null | wc -l | tr -d ' ')
   assert_eq "HelmRelease created" "1" "$HELM_REL_COUNT"
 
-  HELM_REL_CHART=$(kubectl get helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" \
+  HELM_REL_CHART=$(kubectl get helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" \
     -o jsonpath='{.spec.chart.spec.chart}' 2>/dev/null)
-  assert_eq "HelmRelease chart is nginx" "nginx" "$HELM_REL_CHART"
+  assert_eq "HelmRelease chart is podinfo" "podinfo" "$HELM_REL_CHART"
 
-  HELM_REL_REPLICAS=$(kubectl get helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" \
+  HELM_REL_REPLICAS=$(kubectl get helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" \
     -o jsonpath='{.spec.values.replicaCount}' 2>/dev/null)
   assert_eq "HelmRelease specifies 2 replicas" "2" "$HELM_REL_REPLICAS"
 
-  HELM_REL_REMEDIATION=$(kubectl get helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" \
+  HELM_REL_REMEDIATION=$(kubectl get helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" \
     -o jsonpath='{.spec.install.remediation.retries}' 2>/dev/null)
   assert_eq "HelmRelease install remediation retries is 3" "3" "$HELM_REL_REMEDIATION"
 
@@ -311,7 +311,7 @@ if kubectl get pods -n flux-system --no-headers 2>/dev/null | grep -q Running; t
   echo "  Waiting for HelmRelease reconciliation (up to 120s)..."
   HELM_READY=false
   for i in $(seq 1 24); do
-    HR_STATUS=$(kubectl get helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" \
+    HR_STATUS=$(kubectl get helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" \
       -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
     if [ "$HR_STATUS" = "True" ]; then
       HELM_READY=true
@@ -325,11 +325,11 @@ if kubectl get pods -n flux-system --no-headers 2>/dev/null | grep -q Running; t
 
     # Verify helm release created by Flux
     FLUX_HELM_LIST=$(helm list -n "$NS_FLUX" 2>/dev/null)
-    assert_contains "helm list shows flux-managed release" "$FLUX_HELM_LIST" "lab-nginx-$STUDENT_NAME"
+    assert_contains "helm list shows flux-managed release" "$FLUX_HELM_LIST" "lab-podinfo-$STUDENT_NAME"
 
     # Verify pods are running
     FLUX_PODS=$(kubectl get pods -n "$NS_FLUX" \
-      -l "app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME" \
+      -l "app.kubernetes.io/instance=lab-podinfo-$STUDENT_NAME" \
       --no-headers 2>/dev/null | grep -c Running || true)
     if [ "$FLUX_PODS" -ge 2 ]; then
       pass "HelmRelease pods running ($FLUX_PODS replicas)"
@@ -343,23 +343,23 @@ if kubectl get pods -n flux-system --no-headers 2>/dev/null | grep -q Running; t
 
     # Scale manually to create drift
     kubectl scale deployment -n "$NS_FLUX" \
-      -l "app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME" \
+      -l "app.kubernetes.io/instance=lab-podinfo-$STUDENT_NAME" \
       --replicas=5 &>/dev/null
     sleep 3
 
     DRIFT_REPLICAS=$(kubectl get deployment -n "$NS_FLUX" \
-      -l "app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME" \
+      -l "app.kubernetes.io/instance=lab-podinfo-$STUDENT_NAME" \
       -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null)
     assert_eq "manual scale created drift (5 replicas)" "5" "$DRIFT_REPLICAS"
 
     # Force reconciliation
-    flux reconcile helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" &>/dev/null 2>&1
+    flux reconcile helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" &>/dev/null 2>&1
 
     # Wait for Flux to revert
     REVERTED=false
     for i in $(seq 1 24); do
       CURRENT=$(kubectl get deployment -n "$NS_FLUX" \
-        -l "app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME" \
+        -l "app.kubernetes.io/instance=lab-podinfo-$STUDENT_NAME" \
         -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null)
       if [ "$CURRENT" = "2" ]; then
         REVERTED=true
@@ -372,7 +372,7 @@ if kubectl get pods -n flux-system --no-headers 2>/dev/null | grep -q Running; t
       pass "Flux reverted drift back to 2 replicas"
     else
       FINAL=$(kubectl get deployment -n "$NS_FLUX" \
-        -l "app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME" \
+        -l "app.kubernetes.io/instance=lab-podinfo-$STUDENT_NAME" \
         -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null)
       fail "Flux did not revert drift (replicas: $FINAL, expected: 2)"
     fi
@@ -381,8 +381,8 @@ if kubectl get pods -n flux-system --no-headers 2>/dev/null | grep -q Running; t
   fi
 
   # Clean up Flux resources
-  kubectl delete helmrelease "lab-nginx-$STUDENT_NAME" -n "$NS_FLUX" --ignore-not-found &>/dev/null
-  kubectl delete helmrepository "bitnami-$STUDENT_NAME" -n flux-system --ignore-not-found &>/dev/null
+  kubectl delete helmrelease "lab-podinfo-$STUDENT_NAME" -n "$NS_FLUX" --ignore-not-found &>/dev/null
+  kubectl delete helmrepository "podinfo-$STUDENT_NAME" -n flux-system --ignore-not-found &>/dev/null
 else
   skip "flux not running"
 fi

@@ -65,13 +65,14 @@ spec:
                 - kube-system
                 - calico-system
                 - logging
+                - kyverno
       validate:
         message: "Privileged containers are not allowed."
         pattern:
           spec:
             containers:
-              - securityContext:
-                  privileged: "!true"
+              - =(securityContext):
+                  =(privileged): "false"
 ---
 # ─── Require Non-Root ──────────────────────────────────────────────────────
 apiVersion: kyverno.io/v1
@@ -117,7 +118,11 @@ spec:
         any:
           - resources:
               kinds: ["Namespace"]
-              names: ["lab*", "obs-*", "probes-*", "deploy-*", "helm-*", "cicd-*", "flux-*", "irsa-*", "monitoring-*"]
+              names: ["lab*", "obs-*", "probes-*", "deploy-*", "helm-*", "cicd-*", "flux-*", "irsa-*", "monitoring-*", "argocd-*", "sched-*"]
+      exclude:
+        any:
+          - resources:
+              names: ["flux-system"]
       generate:
         apiVersion: v1
         kind: ResourceQuota
@@ -138,7 +143,11 @@ spec:
         any:
           - resources:
               kinds: ["Namespace"]
-              names: ["lab*", "obs-*", "probes-*", "deploy-*", "helm-*", "cicd-*", "flux-*", "irsa-*", "monitoring-*"]
+              names: ["lab*", "obs-*", "probes-*", "deploy-*", "helm-*", "cicd-*", "flux-*", "irsa-*", "monitoring-*", "argocd-*", "sched-*"]
+      exclude:
+        any:
+          - resources:
+              names: ["flux-system"]
       generate:
         apiVersion: v1
         kind: LimitRange

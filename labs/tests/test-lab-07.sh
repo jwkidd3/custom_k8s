@@ -37,13 +37,13 @@ assert_contains "admin role has wildcard verbs" "$ADMIN_DESC" "get"
 echo ""
 echo "RBAC — Role & RoleBinding:"
 
-envsubst < "$LAB_DIR/pod-reader-role.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-reader-role.yaml" | kubectl apply -f - &>/dev/null
 assert_cmd "pod-reader Role created" kubectl get role pod-reader -n "$NS"
 
 kubectl create serviceaccount pod-viewer -n "$NS" &>/dev/null
 assert_cmd "pod-viewer ServiceAccount created" kubectl get serviceaccount pod-viewer -n "$NS"
 
-envsubst < "$LAB_DIR/pod-reader-binding.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/pod-reader-binding.yaml" | kubectl apply -f - &>/dev/null
 assert_cmd "read-pods RoleBinding created" kubectl get rolebinding read-pods -n "$NS"
 
 # Verify Role details
@@ -93,7 +93,7 @@ assert_eq "pod-viewer cannot get pods in default ns" "no" "$CAN_GET_DEFAULT"
 echo ""
 echo "RBAC — Test Pod Exec:"
 
-envsubst < "$LAB_DIR/rbac-test-pod.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/rbac-test-pod.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" rbac-test 90
 
 if kubectl get pod rbac-test -n "$NS" --no-headers 2>/dev/null | grep -q Running; then
@@ -137,13 +137,13 @@ fi
 echo ""
 echo "ClusterRole & ClusterRoleBinding:"
 
-envsubst < "$LAB_DIR/cluster-reader-role.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/cluster-reader-role.yaml" | kubectl apply -f - &>/dev/null
 assert_cmd "ClusterRole created" kubectl get clusterrole "cluster-pod-reader-$STUDENT_NAME"
 
 kubectl create serviceaccount cluster-viewer -n "$NS" &>/dev/null
 assert_cmd "cluster-viewer ServiceAccount created" kubectl get serviceaccount cluster-viewer -n "$NS"
 
-envsubst < "$LAB_DIR/cluster-reader-binding.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/cluster-reader-binding.yaml" | kubectl apply -f - &>/dev/null
 assert_cmd "ClusterRoleBinding created" kubectl get clusterrolebinding "cluster-pod-reader-binding-$STUDENT_NAME"
 
 # Verify ClusterRole details
@@ -204,11 +204,11 @@ NS_LABELS=$(kubectl get namespace "$NS_RESTRICTED" -o json 2>/dev/null)
 assert_contains "restricted enforce label set" "$NS_LABELS" "pod-security.kubernetes.io/enforce"
 
 # Privileged pod should be rejected
-PRIV_RESULT=$(envsubst < "$LAB_DIR/privileged-pod.yaml" | kubectl apply -f - 2>&1)
+PRIV_RESULT=$(envsubst '$STUDENT_NAME' < "$LAB_DIR/privileged-pod.yaml" | kubectl apply -f - 2>&1)
 assert_contains "privileged pod rejected" "$PRIV_RESULT" "forbidden"
 
 # Root pod should be rejected
-ROOT_RESULT=$(envsubst < "$LAB_DIR/root-pod.yaml" | kubectl apply -f - 2>&1)
+ROOT_RESULT=$(envsubst '$STUDENT_NAME' < "$LAB_DIR/root-pod.yaml" | kubectl apply -f - 2>&1)
 assert_contains "root pod rejected" "$ROOT_RESULT" "forbidden"
 
 ###############################################################################
@@ -218,7 +218,7 @@ assert_contains "root pod rejected" "$ROOT_RESULT" "forbidden"
 echo ""
 echo "Secure Pod:"
 
-envsubst < "$LAB_DIR/secure-pod.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/secure-pod.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS_RESTRICTED" secure-app 60
 
 # Verify identity
@@ -273,7 +273,7 @@ echo "IRSA:"
 # Check if IRSA infrastructure is available
 if aws sts get-caller-identity &>/dev/null; then
   ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text 2>/dev/null)
-  ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/irsa-s3-reader-$STUDENT_NAME"
+  ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/platform-lab-irsa-s3-reader"
 
   kubectl create namespace "$NS_IRSA" &>/dev/null
 
@@ -290,10 +290,10 @@ EOF
 
   SA_JSON=$(kubectl get serviceaccount "s3-reader-$STUDENT_NAME" -n "$NS_IRSA" -o json 2>/dev/null)
   assert_contains "IRSA SA has role-arn annotation" "$SA_JSON" "eks.amazonaws.com/role-arn"
-  assert_contains "IRSA SA annotation has correct role ARN" "$SA_JSON" "irsa-s3-reader-$STUDENT_NAME"
+  assert_contains "IRSA SA annotation has correct role ARN" "$SA_JSON" "platform-lab-irsa-s3-reader"
 
   # Deploy IRSA test pod
-  envsubst < "$LAB_DIR/irsa-test-pod.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/irsa-test-pod.yaml" | kubectl apply -f - &>/dev/null
   wait_for_pod "$NS_IRSA" "irsa-test-$STUDENT_NAME" 90
 
   if kubectl get pod "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" --no-headers 2>/dev/null | grep -q Running; then

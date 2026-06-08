@@ -52,7 +52,7 @@ Now create configuration files and load them into a ConfigMap. The `nginx.conf` 
 
 ```bash
 cp nginx.conf /tmp/nginx.conf
-envsubst < app.properties > /tmp/app.properties
+envsubst '$STUDENT_NAME' < app.properties > /tmp/app.properties
 
 kubectl create configmap app-files \
     --from-file=nginx.conf=/tmp/nginx.conf \

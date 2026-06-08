@@ -72,7 +72,7 @@ kubectl get svc -n ingress-nginx
 Apply the manifest:
 
 ```bash
-envsubst < app-v1.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < app-v1.yaml | kubectl apply -f -
 ```
 
 ### Deploy app-v2
@@ -82,7 +82,7 @@ envsubst < app-v1.yaml | kubectl apply -f -
 Apply the manifest:
 
 ```bash
-envsubst < app-v2.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < app-v2.yaml | kubectl apply -f -
 kubectl get pods -n lab06-$STUDENT_NAME -l app=web
 kubectl get svc -n lab06-$STUDENT_NAME
 ```
@@ -98,7 +98,7 @@ kubectl get svc -n lab06-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < ingress-host.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < ingress-host.yaml | kubectl apply -f -
 ```
 
 ---
@@ -128,7 +128,7 @@ curl -s -H "Host: unknown.lab.local" http://$INGRESS_IP
 Apply the manifest:
 
 ```bash
-envsubst < ingress-path.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < ingress-path.yaml | kubectl apply -f -
 
 curl -s -H "Host: app-$STUDENT_NAME.lab.local" http://$INGRESS_IP/v1
 curl -s -H "Host: app-$STUDENT_NAME.lab.local" http://$INGRESS_IP/v2
@@ -155,7 +155,7 @@ kubectl create secret tls lab-tls-secret \
 Apply the manifest:
 
 ```bash
-envsubst < ingress-tls.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < ingress-tls.yaml | kubectl apply -f -
 
 curl -sk -H "Host: secure-$STUDENT_NAME.lab.local" https://$INGRESS_IP
 curl -sI -H "Host: secure-$STUDENT_NAME.lab.local" http://$INGRESS_IP
@@ -172,7 +172,7 @@ curl -sI -H "Host: secure-$STUDENT_NAME.lab.local" http://$INGRESS_IP
 Apply the manifest:
 
 ```bash
-envsubst < ingress-annotations.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < ingress-annotations.yaml | kubectl apply -f -
 
 curl -s -H "Host: api-$STUDENT_NAME.lab.local" http://$INGRESS_IP/api/
 
@@ -211,8 +211,8 @@ kubectl get crd gatewayclasses.gateway.networking.k8s.io
 If available, apply the Gateway and HTTPRoute:
 
 ```bash
-envsubst < gateway.yaml | kubectl apply -f -
-envsubst < httproute.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < gateway.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < httproute.yaml | kubectl apply -f -
 
 # Verify the HTTPRoute with weighted traffic splitting
 kubectl get httproute app-route -n lab06-$STUDENT_NAME -o yaml
@@ -229,13 +229,13 @@ kubectl get httproute app-route -n lab06-$STUDENT_NAME -o yaml
 Create a NetworkPolicy that restricts outbound traffic:
 
 ```bash
-envsubst < egress-policy.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < egress-policy.yaml | kubectl apply -f -
 
 kubectl get networkpolicy restrict-egress -n lab06-$STUDENT_NAME
 kubectl describe networkpolicy restrict-egress -n lab06-$STUDENT_NAME
 ```
 
-> ✅ **Checkpoint:** The policy selects pods with `run=egress-test`, allows DNS (port 53) and HTTPS (port 443) egress only.
+> ✅ **Checkpoint:** The policy selects pods with `run=egress-test`, allows DNS (port 53) and in-namespace HTTP (port 80) egress only.
 
 ---
 

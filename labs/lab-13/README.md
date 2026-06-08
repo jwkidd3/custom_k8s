@@ -56,7 +56,7 @@ echo "ArgoCD password: $ARGOCD_PWD"
 Access the ArgoCD UI:
 
 ```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+kubectl port-forward svc/argocd-argocd-server -n argocd 8080:443 &
 ```
 
 > ⚠️ **Cloud9:** Click **Preview → Preview Running Application** to open the UI. Login: `admin` / password from above.
@@ -145,7 +145,7 @@ argocd app create demo-$STUDENT_NAME \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace argocd-lab-$STUDENT_NAME \
   --directory-recurse \
-  --path manifests \
+  --path guestbook \
   --repo https://github.com/argoproj/argocd-example-apps.git \
   --revision master \
   --sync-policy automated \
@@ -230,10 +230,19 @@ kubectl get deployment -n argocd-lab-$STUDENT_NAME --watch
 
 ### ArgoCD History and Rollback
 
+ArgoCD refuses to roll back an app while automated sync is enabled (it would immediately re-sync). Disable auto-sync first, roll back, then re-enable:
+
 ```bash
+argocd app set demo-$STUDENT_NAME --sync-policy none
+
 argocd app history demo-$STUDENT_NAME
 argocd app rollback demo-$STUDENT_NAME 0
+
+# Re-enable automated sync with prune and self-heal
+argocd app set demo-$STUDENT_NAME --sync-policy automated --auto-prune --self-heal
 ```
+
+> 💡 `argocd-app.yaml` in this lab directory shows the **declarative** `Application` resource equivalent of the `argocd app create` command from Step 4 — in production you'd commit that manifest to Git rather than using the CLI.
 
 ---
 
@@ -269,18 +278,18 @@ kubectl create namespace flux-lab-$STUDENT_NAME
 Review `helm-source.yaml` and `helm-release.yaml`, then apply:
 
 ```bash
-envsubst < helm-source.yaml | kubectl apply -f -
-envsubst < helm-release.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < helm-source.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < helm-release.yaml | kubectl apply -f -
 
-flux get helmreleases -n flux-lab-$STUDENT_NAME lab-nginx-$STUDENT_NAME --watch
+flux get helmreleases -n flux-lab-$STUDENT_NAME lab-podinfo-$STUDENT_NAME --watch
 
 helm list -n flux-lab-$STUDENT_NAME
 
 kubectl get all -n flux-lab-$STUDENT_NAME \
-  -l app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME
+  -l app.kubernetes.io/name=lab-podinfo-$STUDENT_NAME
 ```
 
-> ✅ The HelmRelease shows `Ready: True` and nginx pods are running with 2 replicas.
+> ✅ The HelmRelease shows `Ready: True` and podinfo pods are running with 2 replicas.
 
 ---
 
@@ -289,13 +298,13 @@ kubectl get all -n flux-lab-$STUDENT_NAME \
 ```bash
 # Scale manually to create drift
 kubectl scale deployment -n flux-lab-$STUDENT_NAME \
-  -l app.kubernetes.io/instance=lab-nginx-$STUDENT_NAME \
+  -l app.kubernetes.io/name=lab-podinfo-$STUDENT_NAME \
   --replicas=5
 
 kubectl get deployment -n flux-lab-$STUDENT_NAME
 
 # Force reconciliation -- Flux reverts to 2 replicas
-flux reconcile helmrelease lab-nginx-$STUDENT_NAME \
+flux reconcile helmrelease lab-podinfo-$STUDENT_NAME \
   -n flux-lab-$STUDENT_NAME
 
 kubectl get deployment -n flux-lab-$STUDENT_NAME --watch
@@ -314,9 +323,9 @@ kubectl delete namespace argocd-lab-$STUDENT_NAME
 rm -rf ~/argocd-lab
 
 # FluxCD resources (if completed)
-kubectl delete helmrelease lab-nginx-$STUDENT_NAME \
+kubectl delete helmrelease lab-podinfo-$STUDENT_NAME \
   -n flux-lab-$STUDENT_NAME --ignore-not-found
-kubectl delete helmrepository bitnami-$STUDENT_NAME \
+kubectl delete helmrepository podinfo-$STUDENT_NAME \
   -n flux-system --ignore-not-found
 kubectl delete namespace flux-lab-$STUDENT_NAME 2>/dev/null
 

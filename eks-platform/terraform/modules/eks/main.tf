@@ -29,7 +29,7 @@ module "vpc" {
   public_subnets  = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]
 
   enable_nat_gateway = true
-  single_nat_gateway = true  # cost savings for lab
+  single_nat_gateway = true # cost savings for lab
 
   public_subnet_tags = {
     "kubernetes.io/role/elb" = 1
@@ -248,9 +248,9 @@ resource "kubernetes_storage_class" "gp3_encrypted" {
     }
   }
 
-  storage_provisioner = "ebs.csi.aws.com"
-  reclaim_policy      = "Delete"
-  volume_binding_mode = "WaitForFirstConsumer"
+  storage_provisioner    = "ebs.csi.aws.com"
+  reclaim_policy         = "Delete"
+  volume_binding_mode    = "WaitForFirstConsumer"
   allow_volume_expansion = true
 
   parameters = {
@@ -268,9 +268,9 @@ resource "kubernetes_storage_class" "gp3_encrypted_retain" {
     name = "gp3-encrypted-retain"
   }
 
-  storage_provisioner = "ebs.csi.aws.com"
-  reclaim_policy      = "Retain"
-  volume_binding_mode = "WaitForFirstConsumer"
+  storage_provisioner    = "ebs.csi.aws.com"
+  reclaim_policy         = "Retain"
+  volume_binding_mode    = "WaitForFirstConsumer"
   allow_volume_expansion = true
 
   parameters = {
@@ -288,9 +288,9 @@ resource "kubernetes_storage_class" "io2_encrypted" {
     name = "io2-encrypted"
   }
 
-  storage_provisioner = "ebs.csi.aws.com"
-  reclaim_policy      = "Retain"
-  volume_binding_mode = "WaitForFirstConsumer"
+  storage_provisioner    = "ebs.csi.aws.com"
+  reclaim_policy         = "Retain"
+  volume_binding_mode    = "WaitForFirstConsumer"
   allow_volume_expansion = true
 
   parameters = {

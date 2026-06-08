@@ -36,7 +36,7 @@ assert_contains "logs --since returns recent entries" "$LOGS_SINCE" "request_id"
 
 echo ""
 echo "Multi-Container Logs:"
-envsubst < "$LAB_DIR/multi-container-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/multi-container-app.yaml" | kubectl apply -f - &>/dev/null
 wait_for_pod "$NS" multi-container-app 60
 sleep 3
 
@@ -54,7 +54,7 @@ assert_contains "all-containers flag shows sidecar logs" "$ALL_LOG" "SIDECAR"
 
 echo ""
 echo "JSON Structured Logging:"
-envsubst < "$LAB_DIR/json-logger.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/json-logger.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" json-logger 90
 sleep 5
 
@@ -108,7 +108,7 @@ if kubectl top nodes &>/dev/null; then
   fi
 
   # Deploy stress-test and verify kubectl top pods
-  envsubst < "$LAB_DIR/stress-test.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/stress-test.yaml" | kubectl apply -f - &>/dev/null
   wait_for_deploy "$NS" stress-test 90
 
   STRESS_DEPLOY=$(kubectl get deployment stress-test -n "$NS" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
@@ -158,7 +158,7 @@ fi
 
 echo ""
 echo "Buggy App Debugging:"
-envsubst < "$LAB_DIR/buggy-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/buggy-app.yaml" | kubectl apply -f - &>/dev/null
 sleep 5
 
 # The buggy app exits with code 137 after 5-15 seconds; wait for restarts
@@ -209,7 +209,7 @@ assert_contains "describe shows terminated state" "$DESCRIBE" "Terminated"
 echo ""
 echo "Buggy App PromQL Queries:"
 if kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus --no-headers 2>/dev/null | grep -q Running; then
-  kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 18083:9090 &>/dev/null &
+  kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 18083:9090 &>/dev/null &
   PF_PID=$!
   sleep 3
 
@@ -234,7 +234,7 @@ fi
 echo ""
 echo "Prometheus:"
 if kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus --no-headers 2>/dev/null | grep -q Running; then
-  kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 18080:9090 &>/dev/null &
+  kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 18080:9090 &>/dev/null &
   PF_PID=$!
   sleep 3
 
@@ -294,7 +294,7 @@ fi
 echo ""
 echo "Grafana:"
 if kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana --no-headers 2>/dev/null | grep -q Running; then
-  kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 18081:80 &>/dev/null &
+  kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-stack-grafana 18081:80 &>/dev/null &
   PF_PID=$!
   sleep 3
 
@@ -362,7 +362,7 @@ if kubectl get crd prometheusrules.monitoring.coreos.com &>/dev/null; then
 
   # Verify Prometheus picked up the rule via rules API
   if kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus --no-headers 2>/dev/null | grep -q Running; then
-    kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 18082:9090 &>/dev/null &
+    kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 18082:9090 &>/dev/null &
     PF_PID=$!
     sleep 5
 
@@ -413,7 +413,7 @@ if kubectl get pods -n monitoring -l app.kubernetes.io/name=jaeger --no-headers 
   fi
 
   # Deploy traced app
-  envsubst < "$LAB_DIR/traced-app.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/traced-app.yaml" | kubectl apply -f - &>/dev/null
   wait_for_deploy "$NS" traced-app 90
 
   # Verify OTel env vars are configured

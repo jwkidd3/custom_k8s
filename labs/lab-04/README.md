@@ -45,8 +45,8 @@ kubectl create namespace lab04-$STUDENT_NAME
 Apply the manifests:
 
 ```bash
-envsubst < backend-deployment.yaml | kubectl apply -f -
-envsubst < frontend-deployment.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < backend-deployment.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < frontend-deployment.yaml | kubectl apply -f -
 kubectl get pods -n lab04-$STUDENT_NAME -o wide
 ```
 
@@ -60,7 +60,7 @@ kubectl get pods -n lab04-$STUDENT_NAME -o wide
 Apply the manifest:
 
 ```bash
-envsubst < backend-svc.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < backend-svc.yaml | kubectl apply -f -
 kubectl get svc backend-svc -n lab04-$STUDENT_NAME
 kubectl describe svc backend-svc -n lab04-$STUDENT_NAME
 ```
@@ -151,7 +151,7 @@ kubectl scale deployment backend -n lab04-$STUDENT_NAME --replicas=3
 Apply the manifest:
 
 ```bash
-envsubst < frontend-nodeport.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < frontend-nodeport.yaml | kubectl apply -f -
 kubectl get svc frontend-nodeport -n lab04-$STUDENT_NAME
 NODE_PORT=$(kubectl get svc frontend-nodeport -n lab04-$STUDENT_NAME -o jsonpath='{.spec.ports[0].nodePort}')
 echo "NodePort assigned: $NODE_PORT"
@@ -167,7 +167,7 @@ echo "NodePort assigned: $NODE_PORT"
 Apply the manifest:
 
 ```bash
-envsubst < backend-headless.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < backend-headless.yaml | kubectl apply -f -
 ```
 
 Compare DNS responses between normal and headless Services:
@@ -183,6 +183,28 @@ kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
 ```
 
 > ✅ **Checkpoint:** ClusterIP returns 1 virtual IP. Headless returns all pod IPs directly, letting the client choose which pod to connect to.
+
+---
+
+## Optional Stretch Goal: LoadBalancer Service
+
+Expose the frontend through an AWS load balancer:
+
+```bash
+envsubst '$STUDENT_NAME' < frontend-lb.yaml | kubectl apply -f -
+
+# Wait 2-3 minutes for AWS to provision the load balancer, then:
+kubectl get svc frontend-lb -n lab04-$STUDENT_NAME
+LB_HOST=$(kubectl get svc frontend-lb -n lab04-$STUDENT_NAME \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -s --max-time 10 http://$LB_HOST | head -5
+```
+
+> ⚠️ **Each LoadBalancer Service provisions a real AWS load balancer (billed hourly).** Delete it as soon as you've tested it:
+
+```bash
+kubectl delete svc frontend-lb -n lab04-$STUDENT_NAME
+```
 
 ---
 

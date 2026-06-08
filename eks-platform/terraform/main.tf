@@ -128,11 +128,11 @@ module "irsa" {
 # after cluster setup, before Flux finishes reconciling.
 
 resource "helm_release" "metrics_server" {
-  name             = "metrics-server"
-  repository       = "https://kubernetes-sigs.github.io/metrics-server/"
-  chart            = "metrics-server"
-  namespace        = "kube-system"
-  version          = "3.12.2"
+  name       = "metrics-server"
+  repository = "https://kubernetes-sigs.github.io/metrics-server/"
+  chart      = "metrics-server"
+  namespace  = "kube-system"
+  version    = "3.12.2"
 
   depends_on = [module.eks]
 }
@@ -189,14 +189,18 @@ resource "null_resource" "flux_infrastructure" {
   }
 
   provisioner "local-exec" {
+    environment = {
+      GITHUB_TOKEN = var.github_token
+    }
     command = <<-EOT
       set -e
 
       TMPDIR=$(mktemp -d)
       trap "rm -rf $TMPDIR" EXIT
 
-      # Clone the Flux repo
-      git clone "https://x-access-token:${var.github_token}@github.com/${var.github_owner}/${var.flux_repository_name}.git" "$TMPDIR/repo" 2>/dev/null
+      # Clone the Flux repo — credential helper keeps the token out of argv/logs
+      git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=$GITHUB_TOKEN"; }; f' \
+        clone "https://github.com/${var.github_owner}/${var.flux_repository_name}.git" "$TMPDIR/repo"
 
       # Copy infrastructure definitions
       rm -rf "$TMPDIR/repo/flux"
@@ -227,6 +231,7 @@ KUSTOMIZE
       # Configure git
       git config user.email "terraform@platform-lab"
       git config user.name "Terraform"
+      git config credential.helper '!f() { echo "username=x-access-token"; echo "password=$GITHUB_TOKEN"; }; f'
 
       git add -A
       if git diff --cached --quiet; then

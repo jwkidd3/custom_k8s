@@ -20,7 +20,7 @@ locals {
 }
 
 # ============================================================
-# IRSA Demo Resources (Lab 15)
+# IRSA Demo Resources (Lab 7)
 # ============================================================
 
 resource "aws_s3_bucket" "irsa_demo" {
@@ -47,12 +47,65 @@ resource "aws_s3_object" "test_file" {
 }
 
 resource "aws_s3_object" "sample_data" {
-  bucket  = aws_s3_bucket.irsa_demo.id
-  key     = "data/sample.json"
+  bucket = aws_s3_bucket.irsa_demo.id
+  key    = "data/sample.json"
   content = jsonencode({
     message   = "IRSA S3 read access verified"
     timestamp = "2024-01-01T00:00:00Z"
-    lab       = "lab-15-irsa"
+    lab       = "lab-07-irsa"
+  })
+}
+
+# ─── Lab 7 S3 Reader (shared by all students) ───────────────────────────────
+# Student names are free-form, so a single shared role trusts any
+# s3-reader-* ServiceAccount in any lab07-irsa-* namespace.
+
+data "aws_iam_policy_document" "s3_reader_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [var.cluster_oidc_provider_arn]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "${local.oidc_issuer}:sub"
+      values   = ["system:serviceaccount:lab07-irsa-*:s3-reader-*"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_issuer}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "s3_reader" {
+  name               = "${var.cluster_name}-irsa-s3-reader"
+  assume_role_policy = data.aws_iam_policy_document.s3_reader_assume.json
+
+  tags = {
+    Purpose     = "IRSA Lab Demo"
+    Environment = "training"
+  }
+}
+
+resource "aws_iam_role_policy" "s3_reader" {
+  name = "s3-read-demo-bucket"
+  role = aws_iam_role.s3_reader.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:ListBucket"]
+        Resource = [
+          aws_s3_bucket.irsa_demo.arn,
+          "${aws_s3_bucket.irsa_demo.arn}/*"
+        ]
+      }
+    ]
   })
 }
 
@@ -186,4 +239,9 @@ output "external_dns_role_arn" {
 output "demo_bucket_name" {
   description = "S3 bucket name for IRSA lab demo"
   value       = aws_s3_bucket.irsa_demo.id
+}
+
+output "s3_reader_role_arn" {
+  description = "Shared IRSA role assumed by student s3-reader pods in Lab 7"
+  value       = aws_iam_role.s3_reader.arn
 }

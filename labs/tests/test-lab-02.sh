@@ -49,7 +49,7 @@ fi
 
 echo ""
 echo "PHP-Apache Deployment:"
-envsubst < "$LAB_DIR/php-apache-deployment.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/php-apache-deployment.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" php-apache 90
 
 READY=$(kubectl get deployment php-apache -n "$NS" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
@@ -154,7 +154,7 @@ assert_cmd "load-generator pod deleted" kubectl get pod -n "$NS" 2>/dev/null
 echo ""
 echo "HPA v2:"
 kubectl delete hpa php-apache -n "$NS" &>/dev/null
-envsubst < "$LAB_DIR/hpa-v2.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/hpa-v2.yaml" | kubectl apply -f - &>/dev/null
 sleep 3
 
 HPA_V2_EXISTS=$(kubectl get hpa php-apache-v2 -n "$NS" -o jsonpath='{.metadata.name}' 2>/dev/null)
@@ -184,7 +184,7 @@ assert_contains "HPA v2 describe shows target ref" "$HPA_V2_DESC" "php-apache"
 echo ""
 echo "VPA:"
 if kubectl api-resources 2>/dev/null | grep -q verticalpodautoscalers; then
-  envsubst < "$LAB_DIR/vpa.yaml" | kubectl apply -f - &>/dev/null
+  envsubst '$STUDENT_NAME' < "$LAB_DIR/vpa.yaml" | kubectl apply -f - &>/dev/null
   sleep 3
 
   VPA_EXISTS=$(kubectl get vpa php-apache-vpa -n "$NS" -o jsonpath='{.metadata.name}' 2>/dev/null)
@@ -209,7 +209,7 @@ fi
 
 echo ""
 echo "Inflate Deployment (Cluster Autoscaler):"
-envsubst < "$LAB_DIR/inflate-deployment.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/inflate-deployment.yaml" | kubectl apply -f - &>/dev/null
 sleep 5
 
 INFLATE_EXISTS=$(kubectl get deployment inflate -n "$NS" -o jsonpath='{.metadata.name}' 2>/dev/null)

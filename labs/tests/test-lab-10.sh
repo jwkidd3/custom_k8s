@@ -17,7 +17,7 @@ kubectl create namespace "$NS" &>/dev/null
 # ─── Step 1: No probes (baseline) ────────────────────────────────────────
 
 echo "Step 1: No Probes (baseline)"
-envsubst < "$LAB_DIR/no-probes-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/no-probes-app.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" no-probes-app 60
 
 NOPROBE_LIVE=$(kubectl get deployment no-probes-app -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].livenessProbe}' 2>/dev/null)
@@ -30,7 +30,7 @@ assert_eq "no-probes-app has no readiness probe" "" "$NOPROBE_READY"
 
 echo ""
 echo "Step 2: Liveness Probe (HTTP)"
-envsubst < "$LAB_DIR/liveness-http.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/liveness-http.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" liveness-http 60
 
 LIVENESS_PATH=$(kubectl get deployment liveness-http -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].livenessProbe.httpGet.path}' 2>/dev/null)
@@ -43,7 +43,7 @@ assert_eq "liveness probe port is 80" "80" "$LIVENESS_PORT"
 
 echo ""
 echo "Step 3: Readiness Probe + Service"
-envsubst < "$LAB_DIR/readiness-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/readiness-app.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" readiness-app 90
 
 READINESS_PATH=$(kubectl get deployment readiness-app -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].readinessProbe.httpGet.path}' 2>/dev/null)
@@ -62,7 +62,7 @@ assert_eq "readiness-svc Service created" "1" "$SVC_EXISTS"
 
 echo ""
 echo "Step 4: Startup Probe"
-envsubst < "$LAB_DIR/slow-start-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/slow-start-app.yaml" | kubectl apply -f - &>/dev/null
 sleep 5
 
 STARTUP_FAIL_THRESH=$(kubectl get deployment slow-start-app -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].startupProbe.failureThreshold}' 2>/dev/null)
@@ -81,7 +81,7 @@ assert_eq "slow-start-app has readiness probe" "/" "$STARTUP_READY"
 
 echo ""
 echo "Step 5: Tuned Probes"
-envsubst < "$LAB_DIR/tuned-probes.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/tuned-probes.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" tuned-probes 60
 
 TUNED_LIVE_PERIOD=$(kubectl get deployment tuned-probes -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].livenessProbe.periodSeconds}' 2>/dev/null)
@@ -100,7 +100,7 @@ assert_eq "tuned readiness successThreshold is 3" "3" "$TUNED_READY_SUCCESS"
 
 echo ""
 echo "Step 6: TCP Probe"
-envsubst < "$LAB_DIR/tcp-probe-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/tcp-probe-app.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" tcp-probe-app 60
 
 TCP_LIVE_PORT=$(kubectl get deployment tcp-probe-app -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].livenessProbe.tcpSocket.port}' 2>/dev/null)
@@ -113,7 +113,7 @@ assert_eq "tcp readiness probe port is 6379" "6379" "$TCP_READY_PORT"
 
 echo ""
 echo "Step 7: Exec Probe"
-envsubst < "$LAB_DIR/exec-probe-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/exec-probe-app.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" exec-probe-app 60
 
 EXEC_CMD=$(kubectl get deployment exec-probe-app -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].livenessProbe.exec.command}' 2>/dev/null)
@@ -123,7 +123,7 @@ echo "$EXEC_CMD" | grep -q "cat" && assert_eq "exec probe command contains cat" 
 
 echo ""
 echo "Step 8: Graceful Shutdown"
-envsubst < "$LAB_DIR/graceful-app.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/graceful-app.yaml" | kubectl apply -f - &>/dev/null
 wait_for_deploy "$NS" graceful-app 60
 
 GRACE_PERIOD=$(kubectl get deployment graceful-app -n "$NS" -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}' 2>/dev/null)

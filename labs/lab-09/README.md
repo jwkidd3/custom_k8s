@@ -81,7 +81,7 @@ kubectl logs log-generator --timestamps
 
 <!-- Creates a Pod with two containers (app + sidecar) for log exploration -->
 ```bash
-envsubst < multi-container-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < multi-container-app.yaml | kubectl apply -f -
 ```
 
 ```bash
@@ -96,7 +96,7 @@ kubectl logs multi-container-app --all-containers=true
 
 <!-- Creates a Deployment that outputs structured JSON logs -->
 ```bash
-envsubst < json-logger.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < json-logger.yaml | kubectl apply -f -
 ```
 
 ### View and Filter JSON Logs
@@ -137,7 +137,7 @@ kubectl top pods --containers
 
 <!-- Creates a CPU-intensive Deployment for metrics observation -->
 ```bash
-envsubst < stress-test.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < stress-test.yaml | kubectl apply -f -
 ```
 
 ```bash
@@ -213,9 +213,11 @@ curl -s 'http://localhost:8080/api/v1/query' \
 
 Stop the Prometheus port-forward first, then forward Grafana on port 8080:
 
-Grafana is available at:
-
-**http://aa6f2adb27add49768448bda2c639a2a-b39039dfd272138d.elb.us-east-2.amazonaws.com**
+```bash
+pkill -f "port-forward.*8080" 2>/dev/null
+kubectl port-forward -n monitoring \
+  svc/monitoring-kube-prometheus-stack-grafana 8080:80 &
+```
 
 Login: `admin` / `admin`
 
@@ -286,7 +288,7 @@ kubectl get pods -n amazon-cloudwatch
 
 <!-- Creates a Deployment that simulates OOM crashes for debugging practice -->
 ```bash
-envsubst < buggy-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < buggy-app.yaml | kubectl apply -f -
 ```
 
 ### Systematic Debugging
@@ -337,7 +339,7 @@ kubectl get svc -n monitoring -l app.kubernetes.io/name=jaeger
 This app is configured with OpenTelemetry environment variables pointing to the Jaeger collector:
 
 ```bash
-envsubst < traced-app.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < traced-app.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod -l app=traced-app \
   -n obs-lab-$STUDENT_NAME --timeout=60s
 ```
@@ -359,7 +361,7 @@ kubectl get pod -l app=traced-app -n obs-lab-$STUDENT_NAME \
 
 ```bash
 pkill -f "port-forward.*8080" 2>/dev/null
-kubectl port-forward -n monitoring svc/monitoring-jaeger 8080:16686 &
+kubectl port-forward -n monitoring svc/monitoring-jaeger-query 8080:16686 &
 ```
 
 > ⚠️ **Cloud9:** Click **Preview → Preview Running Application** to open the Jaeger UI. Select a service from the dropdown to view traces.

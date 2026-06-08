@@ -62,7 +62,7 @@ Create a Role that allows read-only access to pods:
 Apply the manifest and create a ServiceAccount:
 
 ```bash
-envsubst < pod-reader-role.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < pod-reader-role.yaml | kubectl apply -f -
 kubectl create serviceaccount pod-viewer -n lab07-$STUDENT_NAME
 ```
 
@@ -71,7 +71,7 @@ kubectl create serviceaccount pod-viewer -n lab07-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < pod-reader-binding.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < pod-reader-binding.yaml | kubectl apply -f -
 ```
 
 ---
@@ -94,7 +94,7 @@ kubectl auth can-i --list -n lab07-$STUDENT_NAME \
 Apply the manifest:
 
 ```bash
-envsubst < rbac-test-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < rbac-test-pod.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod/rbac-test -n lab07-$STUDENT_NAME --timeout=60s
 
 # This should SUCCEED
@@ -116,7 +116,7 @@ kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl create deployment \
 Apply the manifest and create a ServiceAccount:
 
 ```bash
-envsubst < cluster-reader-role.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < cluster-reader-role.yaml | kubectl apply -f -
 kubectl create serviceaccount cluster-viewer -n lab07-$STUDENT_NAME
 ```
 
@@ -127,7 +127,7 @@ Bind it with a ClusterRoleBinding:
 Apply the manifest:
 
 ```bash
-envsubst < cluster-reader-binding.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < cluster-reader-binding.yaml | kubectl apply -f -
 
 # Test cross-namespace read (should be YES)
 kubectl auth can-i list pods -n kube-system \
@@ -172,11 +172,11 @@ Apply both manifests:
 
 ```bash
 # Both should FAIL under the restricted profile
-envsubst < privileged-pod.yaml | kubectl apply -f -
-envsubst < root-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < privileged-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < root-pod.yaml | kubectl apply -f -
 ```
 
-> ✅ **Checkpoint:** Both pods are blocked. Read the error messages to see which checks failed.
+> ✅ **Checkpoint:** Both pods are blocked. The privileged pod is rejected by two independent admission layers — expect a Pod Security error (`violates PodSecurity "restricted:latest"`) or the cluster Kyverno policy message (`Privileged containers are not allowed.`). The root pod fails the `runAsNonRoot` check. Either message means the guardrails are working.
 
 ---
 
@@ -187,7 +187,7 @@ envsubst < root-pod.yaml | kubectl apply -f -
 Apply the manifest:
 
 ```bash
-envsubst < secure-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < secure-pod.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod/secure-app \
   -n lab07-restricted-$STUDENT_NAME --timeout=60s
 
@@ -217,11 +217,11 @@ kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- \
 
 ### Step 9: Create an IRSA-Annotated ServiceAccount
 
+The cluster includes a pre-provisioned IAM role (`platform-lab-irsa-s3-reader`) shared by all students. Its trust policy allows any `s3-reader-*` ServiceAccount in any `lab07-irsa-*` namespace to assume it, and it grants read-only access to the demo S3 bucket.
+
 ```bash
-OIDC_ISSUER=$(aws eks describe-cluster --name platform-lab \
-  --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
 ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/irsa-s3-reader-$STUDENT_NAME"
+ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/platform-lab-irsa-s3-reader"
 echo "Role ARN: $ROLE_ARN"
 ```
 
@@ -248,7 +248,7 @@ EOF
 Apply the manifest:
 
 ```bash
-envsubst < irsa-test-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < irsa-test-pod.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready \
   pod/irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME --timeout=60s
 
@@ -279,7 +279,7 @@ kubectl exec irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME \
   -- aws sts get-caller-identity
 ```
 
-> ✅ **Checkpoint:** `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` are injected. The STS identity ARN contains `assumed-role/irsa-s3-reader-$STUDENT_NAME`.
+> ✅ **Checkpoint:** `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` are injected. The STS identity ARN contains `assumed-role/platform-lab-irsa-s3-reader`.
 
 > ⚠️ **Troubleshooting:** If `sts get-caller-identity` shows the EC2 instance role, IRSA is not working. Verify the `eks.amazonaws.com/role-arn` annotation and OIDC provider configuration.
 

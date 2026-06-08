@@ -50,7 +50,7 @@ kubectl create namespace lab08-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < database.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < database.yaml | kubectl apply -f -
 ```
 
 ### Deploy the Backend and Frontend Tiers
@@ -60,8 +60,8 @@ envsubst < database.yaml | kubectl apply -f -
 Apply the manifests:
 
 ```bash
-envsubst < backend.yaml | kubectl apply -f -
-envsubst < frontend.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < backend.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < frontend.yaml | kubectl apply -f -
 
 kubectl wait --for=condition=Ready pod --all -n lab08-$STUDENT_NAME --timeout=60s
 kubectl get pods -n lab08-$STUDENT_NAME -o wide --show-labels
@@ -93,7 +93,7 @@ kubectl exec database -n lab08-$STUDENT_NAME -- \
 Apply the manifest:
 
 ```bash
-envsubst < deny-all-ingress.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < deny-all-ingress.yaml | kubectl apply -f -
 ```
 
 ---
@@ -126,7 +126,7 @@ echo "Exit code: $?"
 Apply the manifest:
 
 ```bash
-envsubst < allow-frontend-to-backend.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < allow-frontend-to-backend.yaml | kubectl apply -f -
 
 # Frontend -> Backend (should now SUCCEED)
 kubectl exec frontend -n lab08-$STUDENT_NAME -- \
@@ -148,7 +148,7 @@ kubectl exec database -n lab08-$STUDENT_NAME -- \
 Apply the manifest:
 
 ```bash
-envsubst < allow-backend-to-database.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < allow-backend-to-database.yaml | kubectl apply -f -
 
 # Backend -> Database (should now SUCCEED)
 kubectl exec backend -n lab08-$STUDENT_NAME -- \
@@ -208,7 +208,7 @@ Apply this intentionally broken policy and find the bugs:
 Apply the manifest:
 
 ```bash
-envsubst < broken-policy.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < broken-policy.yaml | kubectl apply -f -
 kubectl run test-client --image=nginx:1.25 -n lab08-$STUDENT_NAME --rm -it \
   --restart=Never -- curl -s --max-time 3 \
   http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
@@ -223,7 +223,7 @@ kubectl run test-client --image=nginx:1.25 -n lab08-$STUDENT_NAME --rm -it \
 Apply the manifest:
 
 ```bash
-envsubst < fixed-policy.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < fixed-policy.yaml | kubectl apply -f -
 kubectl run test-client --image=nginx:1.25 \
   -n lab08-$STUDENT_NAME --rm -it --restart=Never -- \
   curl -s --max-time 3 \
@@ -246,7 +246,7 @@ Apply a default deny-all egress policy, then selectively allow DNS:
 
 ```bash
 # Deny all outbound traffic
-envsubst < deny-all-egress.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < deny-all-egress.yaml | kubectl apply -f -
 
 # Verify — outbound requests should now fail
 kubectl exec frontend -n lab08-$STUDENT_NAME -- \
@@ -256,7 +256,7 @@ echo "Exit code: $?"
 
 ```bash
 # Allow DNS resolution (UDP port 53)
-envsubst < allow-dns-egress.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < allow-dns-egress.yaml | kubectl apply -f -
 
 kubectl describe networkpolicy allow-dns-egress -n lab08-$STUDENT_NAME
 ```
@@ -270,7 +270,7 @@ kubectl describe networkpolicy allow-dns-egress -n lab08-$STUDENT_NAME
 Allow ingress from a monitoring namespace:
 
 ```bash
-envsubst < allow-monitoring-ingress.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < allow-monitoring-ingress.yaml | kubectl apply -f -
 
 kubectl describe networkpolicy allow-monitoring-ingress -n lab08-$STUDENT_NAME
 ```

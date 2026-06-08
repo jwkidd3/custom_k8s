@@ -15,7 +15,9 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: external-secrets
-      version: ">=0.10.0"
+      # ClusterSecretStore in security-stores uses external-secrets.io/v1,
+      # which requires ESO >= 0.17
+      version: ">=0.17.0"
   values:
     serviceAccount:
       name: external-secrets

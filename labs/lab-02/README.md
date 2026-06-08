@@ -62,7 +62,7 @@ kubectl config set-context --current --namespace=lab02-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < php-apache-deployment.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < php-apache-deployment.yaml | kubectl apply -f -
 kubectl expose deployment php-apache --port=80 --target-port=80
 kubectl get all -n lab02-$STUDENT_NAME
 ```
@@ -153,7 +153,7 @@ kubectl delete hpa php-apache -n lab02-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < hpa-v2.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < hpa-v2.yaml | kubectl apply -f -
 kubectl describe hpa php-apache-v2 -n lab02-$STUDENT_NAME
 ```
 
@@ -174,7 +174,7 @@ kubectl get crd | grep verticalpodautoscaler
 Apply the manifest:
 
 ```bash
-envsubst < vpa.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < vpa.yaml | kubectl apply -f -
 kubectl describe vpa php-apache-vpa -n lab02-$STUDENT_NAME
 ```
 
@@ -192,7 +192,7 @@ kubectl describe vpa php-apache-vpa -n lab02-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < inflate-deployment.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < inflate-deployment.yaml | kubectl apply -f -
 
 # Watch pods - some should be Pending if cluster is at capacity
 kubectl get pods -n lab02-$STUDENT_NAME -l app=inflate --watch

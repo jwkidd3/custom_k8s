@@ -27,6 +27,16 @@ if [ -z "${1:-}" ]; then
 fi
 
 STUDENT_NAME="$1"
+
+# Must be valid in namespace names, service accounts, and app names (RFC 1123)
+if ! echo "$STUDENT_NAME" | grep -Eq '^[a-z][a-z0-9-]{0,19}$'; then
+  echo -e "${RED}ERROR: Invalid student name: $STUDENT_NAME${NC}"
+  echo "Use lowercase letters, digits, and hyphens only (start with a letter,"
+  echo "20 characters max). No dots, underscores, or uppercase."
+  echo "Examples: jsmith, alice-w"
+  exit 1
+fi
+
 echo "Setting up environment for student: $STUDENT_NAME"
 
 # ─── Verify IAM role ───────────────────────────────────────────────────────
@@ -48,7 +58,8 @@ fi
 
 echo ""
 echo "==> Installing kubectl..."
-curl -sLO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+# Pin to the 1.33 channel to stay within kubectl's ±1 minor-version skew of the cluster
+curl -sLO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable-1.33.txt)/bin/linux/amd64/kubectl"
 chmod +x kubectl
 sudo mv kubectl /usr/local/bin/
 

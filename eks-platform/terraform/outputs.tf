@@ -29,6 +29,11 @@ output "irsa_demo_bucket" {
   value       = module.irsa.demo_bucket_name
 }
 
+output "irsa_s3_reader_role_arn" {
+  description = "Shared IRSA role assumed by student s3-reader pods in Lab 7"
+  value       = module.irsa.s3_reader_role_arn
+}
+
 output "dns_enabled" {
   value = var.enable_dns
 }
@@ -36,7 +41,7 @@ output "dns_enabled" {
 output "access_info" {
   value = var.enable_dns ? "Services accessible via ${var.domain}" : join("\n", [
     "DNS disabled — access services via port-forward or ELB hostname:",
-    "  kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 -n monitoring",
+    "  kubectl port-forward svc/monitoring-kube-prometheus-stack-grafana 3000:80 -n monitoring",
     "  kubectl port-forward svc/vault 8200:8200 -n vault",
     "  kubectl port-forward svc/splunk 8000:8000 -n splunk",
     "  kubectl get svc -n envoy-gateway-system  # ELB hostname for Gateway",

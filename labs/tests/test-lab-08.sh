@@ -19,9 +19,9 @@ kubectl create namespace "$NS" &>/dev/null
 ###############################################################################
 
 echo "Step 1 — Deploy Three-Tier App:"
-envsubst < "$LAB_DIR/database.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/backend.yaml" | kubectl apply -f - &>/dev/null
-envsubst < "$LAB_DIR/frontend.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/database.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/backend.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/frontend.yaml" | kubectl apply -f - &>/dev/null
 kubectl wait --for=condition=Ready pod --all -n "$NS" --timeout=90s &>/dev/null
 
 PODS=$(kubectl get pods -n "$NS" --no-headers 2>/dev/null | grep -c Running || true)
@@ -48,7 +48,7 @@ assert_eq "database has tier=database" "database" "$DB_TIER"
 
 echo ""
 echo "Step 3 — Deny-All Ingress:"
-envsubst < "$LAB_DIR/deny-all-ingress.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/deny-all-ingress.yaml" | kubectl apply -f - &>/dev/null
 
 assert_cmd "deny-all-ingress policy exists" kubectl get networkpolicy default-deny-all-ingress -n "$NS"
 
@@ -100,7 +100,7 @@ fi
 
 echo ""
 echo "Step 6 — Allow Frontend to Backend:"
-envsubst < "$LAB_DIR/allow-frontend-to-backend.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/allow-frontend-to-backend.yaml" | kubectl apply -f - &>/dev/null
 
 assert_cmd "allow-frontend-to-backend policy exists" kubectl get networkpolicy allow-frontend-to-backend -n "$NS"
 
@@ -116,7 +116,7 @@ fi
 
 echo ""
 echo "Step 7 — Allow Backend to Database:"
-envsubst < "$LAB_DIR/allow-backend-to-database.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/allow-backend-to-database.yaml" | kubectl apply -f - &>/dev/null
 
 assert_cmd "allow-backend-to-database policy exists" kubectl get networkpolicy allow-backend-to-database -n "$NS"
 
@@ -132,7 +132,7 @@ fi
 
 echo ""
 echo "Step 8 — Egress Policies:"
-envsubst < "$LAB_DIR/deny-all-egress.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/deny-all-egress.yaml" | kubectl apply -f - &>/dev/null
 
 EGRESS_SEL=$(kubectl get networkpolicy default-deny-all-egress -n "$NS" \
   -o jsonpath='{.spec.podSelector}' 2>/dev/null)
@@ -142,7 +142,7 @@ EGRESS_TYPE=$(kubectl get networkpolicy default-deny-all-egress -n "$NS" \
   -o jsonpath='{.spec.policyTypes[0]}' 2>/dev/null)
 assert_eq "deny-all-egress has Egress policyType" "Egress" "$EGRESS_TYPE"
 
-envsubst < "$LAB_DIR/allow-dns-egress.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/allow-dns-egress.yaml" | kubectl apply -f - &>/dev/null
 
 assert_cmd "allow-dns-egress policy exists" kubectl get networkpolicy allow-dns-egress -n "$NS"
 
@@ -156,7 +156,7 @@ assert_eq "allow-dns-egress allows UDP port 53" "53" "$DNS_PORT"
 
 echo ""
 echo "Step 9 — Namespace-Based Policy:"
-envsubst < "$LAB_DIR/allow-monitoring-ingress.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/allow-monitoring-ingress.yaml" | kubectl apply -f - &>/dev/null
 
 assert_cmd "allow-monitoring-ingress policy exists" kubectl get networkpolicy allow-monitoring-ingress -n "$NS"
 
@@ -174,7 +174,7 @@ assert_eq "monitoring policy allows port 80" "80" "$MON_PORT"
 
 echo ""
 echo "Step 10 — Debug Broken Policy:"
-envsubst < "$LAB_DIR/broken-policy.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/broken-policy.yaml" | kubectl apply -f - &>/dev/null
 
 assert_cmd "broken-policy applied" kubectl get networkpolicy allow-external-to-frontend -n "$NS"
 
@@ -192,7 +192,7 @@ assert_eq "broken policy has wrong port 8080" "8080" "$BROKEN_PORT"
 
 echo ""
 echo "Step 11 — Fixed Policy:"
-envsubst < "$LAB_DIR/fixed-policy.yaml" | kubectl apply -f - &>/dev/null
+envsubst '$STUDENT_NAME' < "$LAB_DIR/fixed-policy.yaml" | kubectl apply -f - &>/dev/null
 
 FIXED_FROM=$(kubectl get networkpolicy allow-external-to-frontend -n "$NS" \
   -o jsonpath='{.spec.ingress[0].from}' 2>/dev/null)

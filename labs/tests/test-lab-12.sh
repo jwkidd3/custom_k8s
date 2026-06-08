@@ -21,32 +21,32 @@ kubectl create namespace "$NS" &>/dev/null
 echo "Step 1 — Helm Basics:"
 assert_cmd "helm version works" helm version --short
 
-helm repo add bitnami https://charts.bitnami.com/bitnami &>/dev/null
+helm repo add podinfo https://stefanprodan.github.io/podinfo &>/dev/null
 helm repo update &>/dev/null
-assert_cmd "bitnami repo added" helm repo list
+assert_cmd "podinfo repo added" helm repo list
 
-SEARCH=$(helm search repo bitnami/nginx 2>/dev/null)
-assert_contains "nginx chart found in bitnami" "$SEARCH" "bitnami/nginx"
+SEARCH=$(helm search repo podinfo/podinfo 2>/dev/null)
+assert_contains "podinfo chart found" "$SEARCH" "podinfo/podinfo"
 
-SHOW_CHART=$(helm show chart bitnami/nginx 2>/dev/null)
-assert_contains "helm show chart returns metadata" "$SHOW_CHART" "name: nginx"
+SHOW_CHART=$(helm show chart podinfo/podinfo 2>/dev/null)
+assert_contains "helm show chart returns metadata" "$SHOW_CHART" "name: podinfo"
 
 # ─── Step 2: Install a chart ────────────────────────────────────────────────
 
 echo ""
 echo "Step 2 — Chart Install:"
-helm install my-nginx bitnami/nginx -n "$NS" \
+helm install my-podinfo podinfo/podinfo -n "$NS" \
   --set replicaCount=2 \
   --set service.type=ClusterIP \
   --wait --timeout 120s &>/dev/null
 
 RELEASE=$(helm list -n "$NS" --short 2>/dev/null)
-assert_contains "release installed" "$RELEASE" "my-nginx"
+assert_contains "release installed" "$RELEASE" "my-podinfo"
 
-STATUS=$(helm status my-nginx -n "$NS" -o json 2>/dev/null | jq -r '.info.status' 2>/dev/null)
+STATUS=$(helm status my-podinfo -n "$NS" -o json 2>/dev/null | jq -r '.info.status' 2>/dev/null)
 assert_eq "release status is deployed" "deployed" "$STATUS"
 
-REPLICAS=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/instance=my-nginx \
+REPLICAS=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/name=my-podinfo \
   -o jsonpath='{.items[0].status.readyReplicas}' 2>/dev/null)
 assert_eq "nginx has 2 replicas" "2" "$REPLICAS"
 
@@ -55,13 +55,13 @@ assert_eq "nginx has 2 replicas" "2" "$REPLICAS"
 echo ""
 echo "Step 3 — Explore Release:"
 
-GET_VALUES=$(helm get values my-nginx -n "$NS" 2>/dev/null)
+GET_VALUES=$(helm get values my-podinfo -n "$NS" 2>/dev/null)
 assert_contains "helm get values shows replicaCount" "$GET_VALUES" "replicaCount"
 
-GET_VALUES_ALL=$(helm get values my-nginx -n "$NS" --all 2>/dev/null)
+GET_VALUES_ALL=$(helm get values my-podinfo -n "$NS" --all 2>/dev/null)
 assert_contains "helm get values --all returns full values" "$GET_VALUES_ALL" "replicaCount"
 
-GET_MANIFEST=$(helm get manifest my-nginx -n "$NS" 2>/dev/null)
+GET_MANIFEST=$(helm get manifest my-podinfo -n "$NS" 2>/dev/null)
 assert_contains "helm get manifest contains Deployment" "$GET_MANIFEST" "kind: Deployment"
 assert_contains "helm get manifest contains Service" "$GET_MANIFEST" "kind: Service"
 
@@ -69,15 +69,15 @@ assert_contains "helm get manifest contains Service" "$GET_MANIFEST" "kind: Serv
 
 echo ""
 echo "Step 4 — Chart Upgrade:"
-helm upgrade my-nginx bitnami/nginx -n "$NS" \
+helm upgrade my-podinfo podinfo/podinfo -n "$NS" \
   --set replicaCount=3 \
   --set service.type=ClusterIP \
   --wait --timeout 120s &>/dev/null
 
-REVISION=$(helm history my-nginx -n "$NS" -o json 2>/dev/null | jq 'length' 2>/dev/null)
+REVISION=$(helm history my-podinfo -n "$NS" -o json 2>/dev/null | jq 'length' 2>/dev/null)
 assert_eq "release at revision 2" "2" "$REVISION"
 
-REPLICAS_UP=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/instance=my-nginx \
+REPLICAS_UP=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/name=my-podinfo \
   -o jsonpath='{.items[0].status.readyReplicas}' 2>/dev/null)
 assert_eq "upgraded to 3 replicas" "3" "$REPLICAS_UP"
 
@@ -89,17 +89,17 @@ assert_eq "helm list shows revision 2" "2" "$LIST_REV"
 echo ""
 echo "Step 5 — Release History and Rollback:"
 
-HISTORY=$(helm history my-nginx -n "$NS" 2>/dev/null)
+HISTORY=$(helm history my-podinfo -n "$NS" 2>/dev/null)
 assert_contains "history shows multiple revisions" "$HISTORY" "1"
 
-helm rollback my-nginx 1 -n "$NS" --wait &>/dev/null
+helm rollback my-podinfo 1 -n "$NS" --wait &>/dev/null
 sleep 10
 
-REPLICAS_RB=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/instance=my-nginx \
+REPLICAS_RB=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/name=my-podinfo \
   -o jsonpath='{.items[0].spec.replicas}' 2>/dev/null)
 assert_eq "rolled back to 2 replicas" "2" "$REPLICAS_RB"
 
-REVISION_AFTER_RB=$(helm history my-nginx -n "$NS" -o json 2>/dev/null | jq 'length' 2>/dev/null)
+REVISION_AFTER_RB=$(helm history my-podinfo -n "$NS" -o json 2>/dev/null | jq 'length' 2>/dev/null)
 assert_eq "rollback creates revision 3" "3" "$REVISION_AFTER_RB"
 
 # ─── Step 6-7: Create and customize a chart ──────────────────────────────────
@@ -238,7 +238,7 @@ rm -rf "$TMPDIR"
 
 # ─── Cleanup ────────────────────────────────────────────────────────────────
 
-helm uninstall my-nginx -n "$NS" &>/dev/null
+helm uninstall my-podinfo -n "$NS" &>/dev/null
 helm uninstall my-custom-app -n "$NS" &>/dev/null
 cleanup_ns "$NS"
 summary

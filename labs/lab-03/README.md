@@ -57,7 +57,7 @@ kubectl describe storageclass gp2
 Apply the manifest:
 
 ```bash
-envsubst < lab-pvc.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-pvc.yaml | kubectl apply -f -
 kubectl get pvc -n lab03-$STUDENT_NAME
 ```
 
@@ -71,7 +71,7 @@ kubectl get pvc -n lab03-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < lab-writer-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-writer-pod.yaml | kubectl apply -f -
 kubectl get pod data-writer -n lab03-$STUDENT_NAME -w
 ```
 
@@ -109,7 +109,7 @@ kubectl get pvc -n lab03-$STUDENT_NAME
 Apply the manifest:
 
 ```bash
-envsubst < lab-reader-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-reader-pod.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod/data-reader -n lab03-$STUDENT_NAME --timeout=120s
 kubectl logs data-reader -n lab03-$STUDENT_NAME
 ```
@@ -127,8 +127,8 @@ Create the headless Service and StatefulSet:
 Apply the manifests:
 
 ```bash
-envsubst < lab-headless-svc.yaml | kubectl apply -f -
-envsubst < lab-statefulset.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-headless-svc.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-statefulset.yaml | kubectl apply -f -
 kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
 ```
 
@@ -215,6 +215,10 @@ kubectl get pvc -n lab03-$STUDENT_NAME
 
 ```bash
 kubectl get storageclass gp2 -o jsonpath='{.allowVolumeExpansion}'
+
+# gp2 does not allow expansion by default — enable it first
+# (cluster-wide setting; safe to run even if a classmate already did)
+kubectl patch storageclass gp2 -p '{"allowVolumeExpansion": true}'
 
 # Expand the PVC for web-0 from 1Gi to 2Gi
 kubectl patch pvc web-data-web-0 -n lab03-$STUDENT_NAME \

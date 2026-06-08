@@ -20,6 +20,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
+  timeout: 10m
+  wait: true
   path: ./flux/infrastructure/core
   prune: true
   sourceRef:
@@ -35,6 +38,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
+  timeout: 10m
+  wait: true
   path: ./flux/infrastructure/security
   prune: true
   sourceRef:
@@ -50,6 +56,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
+  timeout: 10m
+  wait: true
   path: ./flux/infrastructure/security-stores
   prune: true
   sourceRef:
@@ -65,6 +74,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
+  timeout: 15m
+  wait: true
   path: ./flux/infrastructure/monitoring
   prune: true
   sourceRef:
@@ -80,6 +92,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
+  timeout: 10m
+  wait: true
   path: ./flux/infrastructure/networking
   prune: true
   sourceRef:
@@ -89,6 +104,8 @@ spec:
     - name: infrastructure-core
     - name: infrastructure-security
     - name: infrastructure-security-stores
+    # ingress-nginx enables a ServiceMonitor — its CRD comes from kube-prometheus-stack
+    - name: infrastructure-monitoring
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -97,6 +114,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
+  timeout: 10m
+  wait: true
   path: ./flux/infrastructure/logging
   prune: true
   sourceRef:
@@ -131,6 +151,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
   path: ./flux/platform
   prune: true
   sourceRef:
@@ -151,6 +172,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  retryInterval: 2m
   path: ./flux/policies
   prune: true
   sourceRef:

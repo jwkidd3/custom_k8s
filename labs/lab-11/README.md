@@ -48,7 +48,7 @@ Review `app-deploy-v1.yaml` — it creates a Deployment with rolling update stra
 Apply and expose:
 
 ```bash
-envsubst < app-deploy-v1.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < app-deploy-v1.yaml | kubectl apply -f -
 
 kubectl expose deployment webapp \
   --port=80 --target-port=80 \
@@ -133,9 +133,9 @@ Review the three manifests: `blue-deploy.yaml` (blue Deployment), `green-deploy.
 Apply and switch traffic:
 
 ```bash
-envsubst < blue-deploy.yaml | kubectl apply -f -
-envsubst < green-deploy.yaml | kubectl apply -f -
-envsubst < bg-service.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < blue-deploy.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < green-deploy.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < bg-service.yaml | kubectl apply -f -
 
 kubectl run bg-test1 --image=curlimages/curl --rm -it --restart=Never \
   -n deploy-lab-$STUDENT_NAME -- curl -s webapp-bg-svc
@@ -157,9 +157,9 @@ kubectl run bg-test2 --image=curlimages/curl --rm -it --restart=Never \
 Review the three manifests: `canary-stable.yaml` (stable Deployment, 2 replicas), `canary-new.yaml` (canary Deployment, 1 replica), and `canary-service.yaml` (Service selecting both via the shared `app` label).
 
 ```bash
-envsubst < canary-stable.yaml | kubectl apply -f -
-envsubst < canary-new.yaml | kubectl apply -f -
-envsubst < canary-service.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < canary-stable.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < canary-new.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < canary-service.yaml | kubectl apply -f -
 kubectl get pods -n deploy-lab-$STUDENT_NAME -l app=webapp-canary --show-labels
 ```
 
@@ -194,7 +194,7 @@ kubectl run traffic-test --image=curlimages/curl --rm -it --restart=Never \
 Review `pdb.yaml` — it creates a PodDisruptionBudget requiring at least 2 webapp pods available.
 
 ```bash
-envsubst < pdb.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < pdb.yaml | kubectl apply -f -
 kubectl get pdb -n deploy-lab-$STUDENT_NAME
 ```
 

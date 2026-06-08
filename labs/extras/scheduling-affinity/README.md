@@ -49,7 +49,7 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:'.metadata.labels.t
 This pod **must** run on a node in `us-east-2a` (adjust zone to match your cluster):
 
 ```bash
-envsubst < node-affinity-required.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < node-affinity-required.yaml | kubectl apply -f -
 kubectl get pod node-affinity-required -o wide
 ```
 
@@ -58,7 +58,7 @@ kubectl get pod node-affinity-required -o wide
 Try an impossible match:
 
 ```bash
-envsubst < node-affinity-nope.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < node-affinity-nope.yaml | kubectl apply -f -
 kubectl get pod node-affinity-nope
 kubectl describe pod node-affinity-nope | tail -5
 ```
@@ -72,7 +72,7 @@ kubectl describe pod node-affinity-nope | tail -5
 This pod **prefers** a specific zone but will schedule elsewhere if needed:
 
 ```bash
-envsubst < node-affinity-preferred.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < node-affinity-preferred.yaml | kubectl apply -f -
 kubectl get pod node-affinity-preferred -o wide
 ```
 
@@ -85,8 +85,8 @@ kubectl get pod node-affinity-preferred -o wide
 Deploy a cache pod, then a web pod that must run on the **same node** as the cache:
 
 ```bash
-envsubst < cache-pod.yaml | kubectl apply -f -
-envsubst < web-with-affinity.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < cache-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < web-with-affinity.yaml | kubectl apply -f -
 kubectl get pods -o wide
 ```
 
@@ -99,7 +99,7 @@ kubectl get pods -o wide
 Deploy a 3-replica Deployment where replicas **avoid** running on the same node:
 
 ```bash
-envsubst < spread-deployment.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < spread-deployment.yaml | kubectl apply -f -
 kubectl get pods -l app=spread-app -o wide
 ```
 
@@ -122,7 +122,7 @@ kubectl describe nodes | grep -A 2 "Taints:"
 Deploy a pod that tolerates the `dedicated=monitoring` taint:
 
 ```bash
-envsubst < toleration-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < toleration-pod.yaml | kubectl apply -f -
 kubectl get pod toleration-demo -o yaml | grep -A 5 "tolerations:"
 ```
 
@@ -135,14 +135,16 @@ kubectl get pod toleration-demo -o yaml | grep -A 5 "tolerations:"
 Spread pods evenly across availability zones:
 
 ```bash
-envsubst < topology-spread.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < topology-spread.yaml | kubectl apply -f -
 kubectl get pods -l app=zone-spread -o wide
 ```
 
 ```bash
-# Check distribution across zones
+# Check distribution across zones — pods don't carry zone labels,
+# so list the pods' nodes and map each node to its zone
 kubectl get pods -l app=zone-spread \
-  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:'.metadata.labels.topology\.kubernetes\.io/zone'
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName
+kubectl get nodes -L topology.kubernetes.io/zone
 ```
 
 > ✅ **Checkpoint:** Pods are distributed across availability zones with a max skew of 1.
