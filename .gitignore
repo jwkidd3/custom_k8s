@@ -8,9 +8,13 @@
 **/*.tfstate.*
 **/*.tfstate.backup
 
-# Plan output files
+# Plan output files (may embed sensitive variable values, e.g. tokens)
 **/*.tfplan
 **/*.plan
+**/tfplan
+
+# Local Claude Code session/config
+.claude/
 
 # Variable files — often contain secrets
 **/*.tfvars
