@@ -161,11 +161,16 @@ echo "Buggy App Debugging:"
 envsubst '$STUDENT_NAME' < "$LAB_DIR/buggy-app.yaml" | kubectl apply -f - &>/dev/null
 sleep 5
 
-# The buggy app exits with code 137 after 5-15 seconds; wait for restarts
+# Wait for the app to OOM and actually restart at least once (up to ~120s).
+# Waiting on restartCount >= 1 (not just the status string) guarantees that
+# lastState.terminated is populated and a BackOff event has been emitted —
+# the first termination sets state.terminated but not lastState.terminated,
+# which only appears after a restart, so checking too early races on a
+# smaller/loaded cluster.
 BUGGY_RUNNING=false
-for i in $(seq 1 12); do
-  BUGGY_STATUS=$(kubectl get pods -l app=buggy-app -n "$NS" --no-headers 2>/dev/null | head -1)
-  if echo "$BUGGY_STATUS" | grep -qE "CrashLoopBackOff|Error|OOMKilled"; then
+for i in $(seq 1 24); do
+  RC=$(kubectl get pods -l app=buggy-app -n "$NS" -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}' 2>/dev/null)
+  if [ "${RC:-0}" -ge 1 ]; then
     BUGGY_RUNNING=true
     break
   fi
@@ -175,17 +180,13 @@ done
 if [ "$BUGGY_RUNNING" = true ]; then
   pass "buggy-app enters CrashLoopBackOff or Error state"
 else
-  # Even if not yet crashlooping, check restarts
-  RESTARTS=$(kubectl get pods -l app=buggy-app -n "$NS" -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}' 2>/dev/null)
-  if [ "${RESTARTS:-0}" -gt 0 ]; then
-    pass "buggy-app has restarted ($RESTARTS times)"
-  else
-    fail "buggy-app did not crash or restart within timeout"
-  fi
+  fail "buggy-app did not crash or restart within timeout"
 fi
 
-# Check exit code 137
+# Check exit code 137 — prefer lastState (prior instance), fall back to the
+# current terminated state in case the read lands between restarts.
 EXIT_CODE=$(kubectl get pod -l app=buggy-app -n "$NS" -o jsonpath='{.items[0].status.containerStatuses[0].lastState.terminated.exitCode}' 2>/dev/null)
+[ -z "$EXIT_CODE" ] && EXIT_CODE=$(kubectl get pod -l app=buggy-app -n "$NS" -o jsonpath='{.items[0].status.containerStatuses[0].state.terminated.exitCode}' 2>/dev/null)
 assert_eq "buggy-app exit code is 137 (OOMKilled/SIGKILL)" "137" "$EXIT_CODE"
 
 # Check --previous flag retrieves pre-crash logs. Two transient conditions must
@@ -210,9 +211,15 @@ else
   fail "kubectl logs --previous did not return expected content"
 fi
 
-# Check events show warnings
-EVENTS=$(kubectl get events -n "$NS" --sort-by='.lastTimestamp' 2>/dev/null)
-assert_contains "events show BackOff for buggy-app" "$EVENTS" "BackOff"
+# Check events show warnings. The BackOff event is emitted only once the
+# kubelet starts backing off restarts, so retry until it appears.
+BACKOFF_EVENTS=""
+for i in $(seq 1 12); do
+  BACKOFF_EVENTS=$(kubectl get events -n "$NS" --sort-by='.lastTimestamp' 2>/dev/null)
+  echo "$BACKOFF_EVENTS" | grep -q "BackOff" && break
+  sleep 5
+done
+assert_contains "events show BackOff for buggy-app" "$BACKOFF_EVENTS" "BackOff"
 
 # Check describe shows terminated state
 DESCRIBE=$(kubectl describe pod -l app=buggy-app -n "$NS" 2>/dev/null)
