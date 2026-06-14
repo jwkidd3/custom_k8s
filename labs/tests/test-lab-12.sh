@@ -48,7 +48,7 @@ assert_eq "release status is deployed" "deployed" "$STATUS"
 
 REPLICAS=$(kubectl get deployment -n "$NS" -l app.kubernetes.io/name=my-podinfo \
   -o jsonpath='{.items[0].status.readyReplicas}' 2>/dev/null)
-assert_eq "nginx has 2 replicas" "2" "$REPLICAS"
+assert_eq "podinfo has 2 replicas" "2" "$REPLICAS"
 
 # ─── Step 3: Explore the release (get values, get manifest) ─────────────────
 

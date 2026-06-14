@@ -23,7 +23,8 @@ echo "Step 1: ConfigMap from Literals"
 kubectl create configmap app-config -n "$NS" \
   --from-literal=APP_ENV=production \
   --from-literal=APP_LOG_LEVEL=info \
-  --from-literal=APP_MAX_THREADS=4 &>/dev/null
+  --from-literal=APP_MAX_CONNECTIONS=100 \
+  --from-literal=APP_CACHE_TTL=3600 &>/dev/null
 
 CM_ENV=$(kubectl get configmap app-config -n "$NS" -o jsonpath='{.data.APP_ENV}' 2>/dev/null)
 assert_eq "configmap literal APP_ENV=production" "production" "$CM_ENV"
@@ -31,8 +32,11 @@ assert_eq "configmap literal APP_ENV=production" "production" "$CM_ENV"
 CM_LOG=$(kubectl get configmap app-config -n "$NS" -o jsonpath='{.data.APP_LOG_LEVEL}' 2>/dev/null)
 assert_eq "configmap literal APP_LOG_LEVEL=info" "info" "$CM_LOG"
 
-CM_THREADS=$(kubectl get configmap app-config -n "$NS" -o jsonpath='{.data.APP_MAX_THREADS}' 2>/dev/null)
-assert_eq "configmap literal APP_MAX_THREADS=4" "4" "$CM_THREADS"
+CM_CONN=$(kubectl get configmap app-config -n "$NS" -o jsonpath='{.data.APP_MAX_CONNECTIONS}' 2>/dev/null)
+assert_eq "configmap literal APP_MAX_CONNECTIONS=100" "100" "$CM_CONN"
+
+CM_TTL=$(kubectl get configmap app-config -n "$NS" -o jsonpath='{.data.APP_CACHE_TTL}' 2>/dev/null)
+assert_eq "configmap literal APP_CACHE_TTL=3600" "3600" "$CM_TTL"
 
 # --- Step 2: ConfigMap from files ---------------------------------------------
 

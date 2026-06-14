@@ -110,7 +110,7 @@ kubectl get replicasets -n deploy-lab-$STUDENT_NAME -l app=webapp
 ## Step 4: Rollback to v1
 
 ```bash
-kubectl rollout undo deployment/webapp -n deploy-lab-$STUDENT_NAME
+kubectl rollout undo deployment/webapp --to-revision=1 -n deploy-lab-$STUDENT_NAME
 
 kubectl rollout status deployment/webapp -n deploy-lab-$STUDENT_NAME
 
@@ -120,7 +120,7 @@ kubectl run curl-test3 --image=curlimages/curl --rm -it --restart=Never \
 kubectl rollout history deployment/webapp -n deploy-lab-$STUDENT_NAME
 ```
 
-> ✅ The curl response should show **Application v1** again. To target a specific revision: `kubectl rollout undo deployment/webapp --to-revision=1`.
+> ✅ The curl response should show **Application v1** again, served by the original `nginx:1.24` image. Step 2 produced two revisions (the image change, then the page change), so a plain `kubectl rollout undo` would only revert the last one — `--to-revision=1` returns the Deployment fully to v1.
 
 ---
 
