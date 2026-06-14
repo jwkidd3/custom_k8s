@@ -107,9 +107,6 @@ resource "kubectl_manifest" "vault_bootstrap" {
                   vault kv put secret/prod/api \
                     key=ak_live_xxxxxxxxxxxx
 
-                  vault kv put secret/prod/splunk \
-                    hec_token=placeholder
-
                   echo "==> Enabling Kubernetes auth"
                   vault auth enable kubernetes || true
 

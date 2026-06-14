@@ -239,9 +239,6 @@ echo "Logging:"
 
 require_component "logging-operator running" "logging-operator" "logging"
 
-# Splunk
-require_component "splunk running" "splunk" "splunk"
-
 # ─── GitOps ──────────────────────────────────────────────────────────────────
 
 echo ""

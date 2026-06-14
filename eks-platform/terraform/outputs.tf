@@ -43,7 +43,6 @@ output "access_info" {
     "DNS disabled — access services via port-forward or ELB hostname:",
     "  kubectl port-forward svc/monitoring-kube-prometheus-stack-grafana 3000:80 -n monitoring",
     "  kubectl port-forward svc/vault 8200:8200 -n vault",
-    "  kubectl port-forward svc/splunk 8000:8000 -n splunk",
     "  kubectl get svc -n envoy-gateway-system  # ELB hostname for Gateway",
   ])
 }

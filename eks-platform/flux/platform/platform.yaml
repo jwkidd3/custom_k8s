@@ -1,65 +1,3 @@
-# ─── Splunk Standalone (Free License) ───────────────────────────────────────
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: splunk
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: splunk
-  namespace: splunk
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: splunk
-  template:
-    metadata:
-      labels:
-        app: splunk
-    spec:
-      containers:
-        - name: splunk
-          image: splunk/splunk:9.2
-          env:
-            - name: SPLUNK_START_ARGS
-              value: "--accept-license"
-            - name: SPLUNK_PASSWORD
-              value: "Chang3Me!"
-            - name: SPLUNK_LICENSE_URI
-              value: Free
-          ports:
-            - containerPort: 8000
-              name: web
-            - containerPort: 8088
-              name: hec
-            - containerPort: 8089
-              name: mgmt
-          resources:
-            requests:
-              memory: "2Gi"
-              cpu: "1"
-            limits:
-              memory: "4Gi"
-              cpu: "2"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: splunk
-  namespace: splunk
-spec:
-  selector:
-    app: splunk
-  ports:
-    - name: web
-      port: 8000
-    - name: hec
-      port: 8088
-    - name: mgmt
-      port: 8089
----
 # ─── ClusterIssuer (Let's Encrypt) ─────────────────────────────────────────
 # REQUIRES DNS: Uncomment after setting enable_dns = true in Terraform
 #
@@ -107,46 +45,6 @@ spec:
     #       - name: platform-tls
     #   hostname: "*.example.com"
 ---
-# ─── Logging Pipeline → Splunk ─────────────────────────────────────────────
-apiVersion: logging.banzaicloud.io/v1beta1
-kind: Logging
-metadata:
-  name: default-logging
-  namespace: logging
-spec:
-  fluentd: {}
-  fluentbit: {}
-  controlNamespace: logging
----
-apiVersion: logging.banzaicloud.io/v1beta1
-kind: ClusterOutput
-metadata:
-  name: splunk-output
-  namespace: logging
-spec:
-  splunkHec:
-    hec_host: splunk.splunk.svc.cluster.local
-    hec_port: 8088
-    hec_token:
-      valueFrom:
-        secretKeyRef:
-          name: splunk-hec-token
-          key: token
-    insecure_ssl: true
-    index: main
-    source: kubernetes
-    format:
-      type: json
----
-apiVersion: logging.banzaicloud.io/v1beta1
-kind: ClusterFlow
-metadata:
-  name: all-logs-to-splunk
-  namespace: logging
-spec:
-  globalOutputRefs:
-    - splunk-output
----
 # ─── Blackbox Probes ───────────────────────────────────────────────────────
 apiVersion: monitoring.coreos.com/v1
 kind: Probe
@@ -164,6 +62,5 @@ spec:
     staticConfig:
       static:
         - http://vault.vault.svc.cluster.local:8200/v1/sys/health
-        - http://splunk.splunk.svc.cluster.local:8000
         # Add external endpoints when DNS is configured
         # - https://example.com

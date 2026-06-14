@@ -68,18 +68,6 @@ Update (and uncomment) the ARNs in:
 
 Commit and push.
 
-### Configure Splunk HEC Token
-
-```bash
-kubectl port-forward svc/splunk 8000:8000 -n splunk
-# http://localhost:8000 — admin / Chang3Me!
-# Settings > Data Inputs > HTTP Event Collector > New Token
-# Name: kubernetes | Index: main | Source Type: _json
-
-kubectl create secret generic splunk-hec-token \
-  -n logging --from-literal=token=YOUR_HEC_TOKEN
-```
-
 ---
 
 ## Step 4: Verify Platform Components
@@ -103,8 +91,7 @@ kubectl get pods -n vault                            # Vault
 kubectl exec -n vault vault-0 -- vault status
 kubectl get pods -n external-secrets                 # ESO
 kubectl get clustersecretstore                       # Vault integration
-kubectl get pods -n logging                          # logging-operator + fluent-bit
-kubectl get pods -n splunk                           # Splunk
+kubectl get pods -n logging                          # logging-operator
 aws s3 ls s3://platform-lab-irsa-demo/               # IRSA demo bucket
 ```
 
