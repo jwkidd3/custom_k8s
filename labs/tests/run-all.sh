@@ -35,11 +35,13 @@ run_test_capture() {
   local exit_code=$?
   echo "$output"
 
-  # Extract counts from summary
-  local p f s
-  p=$(echo "$output" | grep "Passed:" | grep -o '[0-9]*' | head -1)
-  f=$(echo "$output" | grep "Failed:" | grep -o '[0-9]*' | head -1)
-  s=$(echo "$output" | grep "Skipped:" | grep -o '[0-9]*' | head -1)
+  # Extract counts from summary. Strip ANSI color codes first — they contain
+  # digits (e.g. yellow = \033[1;33m), which otherwise get parsed as counts.
+  local clean p f s
+  clean=$(printf '%s\n' "$output" | sed "s/$(printf '\033')\[[0-9;]*m//g")
+  p=$(echo "$clean" | grep "Passed:"  | grep -oE '[0-9]+' | head -1)
+  f=$(echo "$clean" | grep "Failed:"  | grep -oE '[0-9]+' | head -1)
+  s=$(echo "$clean" | grep "Skipped:" | grep -oE '[0-9]+' | head -1)
 
   TOTAL_PASS=$((TOTAL_PASS + ${p:-0}))
   TOTAL_FAIL=$((TOTAL_FAIL + ${f:-0}))
