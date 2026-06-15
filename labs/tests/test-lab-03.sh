@@ -33,12 +33,15 @@ fi
 SC_BINDING=$(kubectl get storageclass gp2 -o jsonpath='{.volumeBindingMode}' 2>/dev/null)
 assert_eq "gp2 binding mode is WaitForFirstConsumer" "WaitForFirstConsumer" "$SC_BINDING"
 
+# Lab Step 9 enables expansion on the default-EKS gp2 class before expanding a PVC.
+# Replicate that here so the expansion path is actually exercised, not skipped.
+kubectl patch storageclass gp2 -p '{"allowVolumeExpansion": true}' >/dev/null 2>&1 || true
 SC_EXPAND=$(kubectl get storageclass gp2 -o jsonpath='{.allowVolumeExpansion}' 2>/dev/null)
 if [ "$SC_EXPAND" = "true" ]; then
-  pass "gp2 allows volume expansion"
+  pass "gp2 allows volume expansion (enabled via patch)"
   GP2_EXPAND=true
 else
-  skip "gp2 does not allow volume expansion (default EKS)"
+  skip "gp2 does not allow volume expansion (patch did not take effect)"
   GP2_EXPAND=false
 fi
 
