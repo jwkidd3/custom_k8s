@@ -52,29 +52,42 @@ provider "aws" {
   region = var.aws_region
 }
 
-data "aws_eks_cluster_auth" "this" {
-  name = module.eks.cluster_name
-}
+# Authenticate to EKS with `aws eks get-token` via the exec plugin rather than a
+# static data.aws_eks_cluster_auth token. The static token expires after ~15 min,
+# which fails mid-apply (Unauthorized) because the cluster + node group build
+# takes longer than that before these in-cluster resources are reached.
 
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_ca)
-  token                  = data.aws_eks_cluster_auth.this.token
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name, "--region", var.aws_region]
+  }
 }
 
 provider "helm" {
   kubernetes {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_ca)
-    token                  = data.aws_eks_cluster_auth.this.token
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name, "--region", var.aws_region]
+    }
   }
 }
 
 provider "kubectl" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_ca)
-  token                  = data.aws_eks_cluster_auth.this.token
   load_config_file       = false
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name, "--region", var.aws_region]
+  }
 }
 
 provider "github" {
@@ -86,7 +99,11 @@ provider "flux" {
   kubernetes = {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_ca)
-    token                  = data.aws_eks_cluster_auth.this.token
+    exec = {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name, "--region", var.aws_region]
+    }
   }
   git = {
     url = "ssh://git@github.com/${var.github_owner}/${var.flux_repository_name}.git"
