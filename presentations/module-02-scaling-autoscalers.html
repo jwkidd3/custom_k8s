@@ -625,6 +625,101 @@
                 <aside class="notes">60-70% CPU target leaves headroom for scaling lag. Load test to validate. Pod autoscaling requires sufficient cluster node capacity (Cluster Autoscaler).</aside>
             </section>
 
+            <!-- Section Divider: Scheduling & Placement -->
+            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
+                <h2>&#127919; Scheduling &amp; Placement</h2>
+                <h3>Where your Pods land &mdash; and how to steer it</h3>
+                <aside class="notes">Scaling decides how many Pods run; scheduling decides which nodes they run on. The two go hand in hand — autoscaling adds capacity, scheduling places work on it.</aside>
+            </section>
+
+            <!-- How the scheduler places pods -->
+            <section>
+                <h2>&#129518; How the Scheduler Places Pods</h2>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>What kube-scheduler weighs</h4>
+                        <ul>
+                            <li>Node free CPU/memory vs the Pod's resource <strong>requests</strong></li>
+                            <li>Taints, affinity rules, topology constraints</li>
+                            <li>Spreads Pods across nodes for resilience</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>The simplest control</h4>
+                        <ul>
+                            <li><strong>nodeSelector</strong> &mdash; match node labels</li>
+                            <li>Built-in labels: <code>topology.kubernetes.io/zone</code>, <code>kubernetes.io/hostname</code>, <code>node.kubernetes.io/instance-type</code></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="key-point"><strong>Default behavior is good:</strong> let the scheduler place Pods unless you have a real reason to constrain them.</div>
+                <aside class="notes">The scheduler binds each Pod to a node. You only override it for real needs — hardware (GPU), spreading for HA, or compliance.</aside>
+            </section>
+
+            <!-- Taints/tolerations + node affinity -->
+            <section>
+                <h2>&#129683; Keeping Pods On (or Off) Nodes</h2>
+                <table>
+                    <thead><tr><th>Mechanism</th><th>Driven by</th><th>What it does</th></tr></thead>
+                    <tbody>
+                        <tr><td><strong>Taints &amp; Tolerations</strong></td><td>the node</td><td>A tainted node rejects Pods unless they <em>tolerate</em> the taint (GPU / dedicated nodes)</td></tr>
+                        <tr><td><strong>Node Affinity</strong></td><td>the Pod</td><td>Pod asks for nodes matching label rules &mdash; generalizes nodeSelector</td></tr>
+                    </tbody>
+                </table>
+                <div class="two-columns">
+                    <div class="card"><h4>required&hellip; <span style="font-weight:400;">(hard)</span></h4><p>Pod won't schedule unless the rule matches.</p></div>
+                    <div class="card"><h4>preferred&hellip; <span style="font-weight:400;">(soft)</span></h4><p>Weighted preference &mdash; still schedules if unmatched.</p></div>
+                </div>
+                <aside class="notes">Operators: In, NotIn, Exists, DoesNotExist, Gt, Lt. Taints+tolerations and node affinity are often combined — e.g. a GPU node carries a taint AND a label; the Pod adds a toleration AND node affinity.</aside>
+            </section>
+
+            <!-- Pod affinity / anti-affinity + topology spread -->
+            <section>
+                <h2>&#129523; Placement Relative to Other Pods</h2>
+                <div class="three-columns">
+                    <div class="card"><h4>Pod Affinity</h4><p>Co-locate with related Pods &mdash; e.g. an app near its cache, same zone.</p></div>
+                    <div class="card"><h4>Pod Anti-Affinity</h4><p>Spread replicas apart &mdash; one per node/zone.</p></div>
+                    <div class="card"><h4>Topology Spread</h4><p>Even distribution across a topology key (zones, nodes) within a skew budget.</p></div>
+                </div>
+                <div class="key-point"><strong>Use for HA:</strong> anti-affinity / topology spread stop all your replicas from sharing one node or zone.</div>
+                <aside class="notes">Anti-affinity and topologySpreadConstraints are the practical HA levers — keep replicas from co-locating so one node/zone failure can't take the whole service down.</aside>
+            </section>
+
+            <!-- Priority & preemption -->
+            <section>
+                <h2>&#9889; Priority &amp; Preemption</h2>
+                <ul>
+                    <li>A <strong>PriorityClass</strong> assigns a numeric priority to Pods</li>
+                    <li>When the cluster is full, the scheduler can <strong>preempt</strong> (evict) lower-priority Pods to make room for a higher-priority one</li>
+                    <li>Critical workloads schedule first; best-effort jobs yield</li>
+                </ul>
+                <div class="highlight-box warning"><strong>Caution:</strong> preemption evicts <em>running</em> Pods &mdash; reserve high priority for genuinely critical workloads.</div>
+                <aside class="notes">Preemption is how the cluster guarantees room for critical Pods under contention. It pairs with the Cluster Autoscaler — preempt now, add a node, reschedule the evicted Pod.</aside>
+            </section>
+
+            <!-- DaemonSets -->
+            <section>
+                <h2>&#128230; DaemonSets &mdash; One Pod per Node</h2>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>What it is</h4>
+                        <ul>
+                            <li>Runs exactly one Pod on every node (or a labeled subset)</li>
+                            <li>New nodes automatically get the Pod; drained nodes drop it</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>Typical uses</h4>
+                        <ul>
+                            <li>Log/metrics agents (Fluent Bit), the CNI (<code>aws-node</code>), <code>kube-proxy</code>, CSI node drivers</li>
+                            <li>Anything that must run <em>on the node</em>, not just somewhere in the cluster</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="key-point"><strong>Deployment vs DaemonSet:</strong> a Deployment runs N replicas placed anywhere; a DaemonSet runs one per node. See them with <code>kubectl get daemonset -A</code>.</div>
+                <aside class="notes">Ties back to Lab 1 — the kube-system agents you observed (aws-node, kube-proxy, ebs-csi-node) are all DaemonSets.</aside>
+            </section>
+
             <!-- Lab Callout -->
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="lab-callout">
                 <h2>&#128295; Lab 2: Configuring Autoscaling</h2>

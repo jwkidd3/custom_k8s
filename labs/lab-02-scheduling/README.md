@@ -1,6 +1,6 @@
-# Bonus Lab: Scheduling with Affinity and Anti-Affinity
-### Node Affinity, Pod Affinity, Pod Anti-Affinity, and Taints/Tolerations
-**Intermediate Kubernetes — Bonus Content**
+# Lab 2 (Part 2): Scheduling and Placement
+### Node Affinity, Pod Affinity/Anti-Affinity, Taints/Tolerations, Topology Spread, DaemonSets
+**Intermediate Kubernetes — Module 2 companion**
 
 ---
 
@@ -12,6 +12,8 @@
 - Use pod affinity to co-locate related pods
 - Use pod anti-affinity to spread pods across nodes
 - Apply taints and tolerations to control scheduling
+- Spread pods evenly with topology spread constraints
+- Observe DaemonSets (one pod per node)
 
 ### Prerequisites
 
@@ -148,6 +150,27 @@ kubectl get nodes -L topology.kubernetes.io/zone
 ```
 
 > ✅ **Checkpoint:** Pods are distributed across availability zones with a max skew of 1.
+
+---
+
+## Step 8: DaemonSets — One Pod per Node
+
+A **DaemonSet** runs exactly one Pod on every node (or a labeled subset) — new nodes get the Pod automatically, drained nodes lose it. The cluster's own agents run this way. On a shared cluster, **observe** the existing ones rather than creating your own:
+
+```bash
+# Cluster agents that run one-per-node
+kubectl get daemonset -n kube-system
+
+# The pods they place on every node: CNI, kube-proxy, EBS CSI node driver
+kubectl get pods -n kube-system -o wide | grep -E 'aws-node|kube-proxy|ebs-csi-node'
+
+# A DaemonSet's DESIRED count == number of nodes (not a fixed replica count)
+kubectl get nodes --no-headers | wc -l
+kubectl get daemonset aws-node -n kube-system \
+  -o jsonpath='{.status.desiredNumberScheduled}{"\n"}'
+```
+
+> ✅ **Checkpoint:** `aws-node`'s desired count equals your node count — one Pod per node. This is the difference from a Deployment: a Deployment runs *N replicas placed anywhere*; a DaemonSet runs *one per node*. The CNI, `kube-proxy`, and the CSI node driver all rely on it.
 
 ---
 

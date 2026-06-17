@@ -202,6 +202,12 @@ kubectl get pods -n lab02-$STUDENT_NAME -l app=inflate --watch
 
 ---
 
+## Part 2: Scheduling and Placement
+
+Continue with **[Lab 2 (Part 2): Scheduling and Placement](../lab-02-scheduling/README.md)** — node affinity, pod affinity/anti-affinity, taints & tolerations, topology spread, and DaemonSets. It uses its own `sched-$STUDENT_NAME` namespace, so you can run it before or after the cleanup below.
+
+---
+
 ## Step 10: Clean Up
 
 ```bash
