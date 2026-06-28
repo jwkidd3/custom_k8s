@@ -19,6 +19,9 @@ REGION=$(grep -E '^aws_region' terraform.tfvars | sed 's/.*= *"//; s/".*//')
 CLUSTER=$(grep -E '^cluster_name' terraform.tfvars | sed 's/.*= *"//; s/".*//')
 echo "==> Deploying $CLUSTER in $REGION"
 
+echo "==> terraform init"
+terraform init -input=false >/dev/null || { echo "ERROR: terraform init failed"; exit 1; }
+
 # Pre-flight: an interrupted prior run can orphan the EKS control-plane log group
 # in AWS without recording it in state. Terraform then aborts every retry with
 # ResourceAlreadyExistsException *before* creating the cluster. If the cluster
