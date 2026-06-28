@@ -19,13 +19,27 @@ REGION=$(grep -E '^aws_region' terraform.tfvars | sed 's/.*= *"//; s/".*//')
 CLUSTER=$(grep -E '^cluster_name' terraform.tfvars | sed 's/.*= *"//; s/".*//')
 echo "==> Deploying $CLUSTER in $REGION"
 
+# Pre-flight: an interrupted prior run can orphan the EKS control-plane log group
+# in AWS without recording it in state. Terraform then aborts every retry with
+# ResourceAlreadyExistsException *before* creating the cluster. If the cluster
+# doesn't exist but the log group does, delete the orphan so the build proceeds.
+if ! aws eks describe-cluster --name "$CLUSTER" --region "$REGION" &>/dev/null; then
+  LG="/aws/eks/$CLUSTER/cluster"
+  if aws logs describe-log-groups --region "$REGION" --log-group-name-prefix "$LG" \
+       --query 'logGroups[0].logGroupName' --output text 2>/dev/null | grep -q "$LG"; then
+    echo "==> Removing orphaned log group $LG (cluster does not exist yet)"
+    aws logs delete-log-group --region "$REGION" --log-group-name "$LG" 2>/dev/null || true
+  fi
+fi
+
 echo "==> Stage 1: VPC + EKS cluster + node group + EBS-CSI IAM"
 terraform apply -auto-approve -input=false \
   -target=module.eks.module.vpc \
   -target=module.eks.module.eks \
   -target=module.eks.aws_iam_role.ebs_csi \
   -target=module.eks.aws_iam_role_policy_attachment.ebs_csi \
-  -target=module.eks.aws_iam_role_policy.ebs_csi_kms
+  -target=module.eks.aws_iam_role_policy.ebs_csi_kms \
+  || { echo "ERROR: Stage 1 apply failed — aborting (not spinning)."; exit 1; }
 
 echo "==> Connecting kubeconfig"
 aws eks update-kubeconfig --name "$CLUSTER" --region "$REGION" >/dev/null
@@ -41,7 +55,8 @@ for i in $(seq 1 20); do
 done
 
 echo "==> Stage 2: full apply (storage classes, metrics-server, Vault, Flux bootstrap, IRSA)"
-terraform apply -auto-approve -input=false
+terraform apply -auto-approve -input=false \
+  || { echo "ERROR: Stage 2 apply failed — aborting."; exit 1; }
 
 echo "==> Waiting for Flux Kustomizations to reconcile (max 20m)"
 for i in $(seq 1 120); do
