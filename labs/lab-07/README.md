@@ -80,7 +80,11 @@ kubectl auth can-i --list -n lab07-$STUDENT_NAME \
   --as=system:serviceaccount:lab07-$STUDENT_NAME:pod-viewer
 ```
 
-> ✅ **Checkpoint:** Output shows `get`, `list`, `watch` on `pods` and `get` on `pods/log` -- nothing else.
+> ✅ **Checkpoint:** The lines **from your Role** are `pods` → `[get list watch]` and `pods/log` → `[get]`.
+>
+> You will also see entries you did *not* grant — the `selfsubject*reviews` APIs and a list of non-resource URLs (`/healthz`, `/version`, `/api`, `/apis`, `/openapi`, `/openid/v1/jwks`, …). Those are the **defaults every authenticated identity gets**, via the built-in `system:basic-user`, `system:discovery`, and `system:public-info-viewer` ClusterRoleBindings. `kubectl auth can-i --list` prints the **union** of *all* applicable rules, not just your Role — so those discovery/self-review entries always appear. The key point still holds: your ServiceAccount has **no write access to anything**.
+>
+> The `Warning: the list may be incomplete: webhook authorizer does not support user rule resolution` line is expected on EKS — the AWS authorizer can't enumerate rules, so the list reflects Kubernetes RBAC only.
 
 ---
 
