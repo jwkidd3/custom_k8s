@@ -365,20 +365,19 @@
 
             <!-- Lab Callout -->
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="lab-callout">
-                <h2>&#129489;&#8205;&#128187; Lab 6: Ingress and Gateway API</h2>
+                <h2>&#129489;&#8205;&#128187; Lab 6: Gateway API and HTTP Routing</h2>
                 <h3>Hands-On Exercise</h3>
                 <ul>
-                    <li>Verify the NGINX Ingress Controller and IngressClass</li>
-                    <li>Create host-based and path-based Ingress resources</li>
-                    <li>Configure TLS termination with a self-signed certificate</li>
-                    <li>Test Ingress annotations: rate limiting, CORS, rewrite</li>
-                    <li><em>Optional:</em> Deploy Gateway API resources with HTTPRoute traffic splitting</li>
-                    <li><em>Optional:</em> Configure egress NetworkPolicies to control outbound traffic</li>
+                    <li>Deploy two apps and create a <code>GatewayClass</code> + <code>Gateway</code> (its own load balancer)</li>
+                    <li>Host routing with weighted traffic splitting (80/20) via an <code>HTTPRoute</code></li>
+                    <li>Path routing (<code>/v1</code>, <code>/v2</code>) via a second <code>HTTPRoute</code></li>
+                    <li>Reach the Gateway by its own LB + <code>Host</code> header (separate from ingress-nginx)</li>
+                    <li>Apply an egress <code>NetworkPolicy</code> to restrict outbound traffic</li>
                 </ul>
                 <div class="highlight-box" style="margin-top: 20px;">
                     <strong>Duration:</strong> ~30-40 minutes
                 </div>
-                <aside class="notes">This lab covers both Ingress and Gateway API. The canary deployment exercise highlights how Gateway API simplifies traffic management versus annotation-driven Ingress.</aside>
+                <aside class="notes">This lab focuses on the Gateway API as the modern replacement for Ingress: typed, role-separated resources (GatewayClass / Gateway / HTTPRoute), each Gateway with its own load balancer, and host/path/weighted routing as first-class fields instead of controller annotations.</aside>
             </section>
 
             <!-- Key Takeaways -->
