@@ -1,6 +1,6 @@
 #!/bin/bash
 ###############################################################################
-# Lab 7 Test: RBAC, Security, and IRSA — Comprehensive Coverage
+# Lab 7 Test: RBAC and Pod Security — Comprehensive Coverage
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -10,8 +10,7 @@ source "$SCRIPT_DIR/lib.sh"
 export STUDENT_NAME="test-$$"
 NS="lab07-$STUDENT_NAME"
 NS_RESTRICTED="lab07-restricted-$STUDENT_NAME"
-NS_IRSA="lab07-irsa-$STUDENT_NAME"
-echo "=== Lab 7: RBAC, Security & IRSA (ns: $NS) ==="
+echo "=== Lab 7: RBAC and Pod Security (ns: $NS) ==="
 echo ""
 
 kubectl create namespace "$NS" &>/dev/null
@@ -276,89 +275,6 @@ ALLOW_PRIV_ESC=$(kubectl get pod secure-app -n "$NS_RESTRICTED" \
 assert_eq "allowPrivilegeEscalation is false" "false" "$ALLOW_PRIV_ESC"
 
 ###############################################################################
-# Steps 9-11: IRSA — IAM Roles for Service Accounts
-###############################################################################
-
-echo ""
-echo "IRSA:"
-
-# Check if IRSA infrastructure is available
-if aws sts get-caller-identity &>/dev/null; then
-  ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text 2>/dev/null)
-  ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/platform-lab-irsa-s3-reader"
-
-  kubectl create namespace "$NS_IRSA" &>/dev/null
-
-  # Create the annotated ServiceAccount
-  cat <<EOF | kubectl apply -f - &>/dev/null
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: s3-reader-$STUDENT_NAME
-  namespace: $NS_IRSA
-  annotations:
-    eks.amazonaws.com/role-arn: "${ROLE_ARN}"
-EOF
-
-  SA_JSON=$(kubectl get serviceaccount "s3-reader-$STUDENT_NAME" -n "$NS_IRSA" -o json 2>/dev/null)
-  assert_contains "IRSA SA has role-arn annotation" "$SA_JSON" "eks.amazonaws.com/role-arn"
-  assert_contains "IRSA SA annotation has correct role ARN" "$SA_JSON" "platform-lab-irsa-s3-reader"
-
-  # Deploy IRSA test pod
-  envsubst '$STUDENT_NAME' < "$LAB_DIR/irsa-test-pod.yaml" | kubectl apply -f - &>/dev/null
-  wait_for_pod "$NS_IRSA" "irsa-test-$STUDENT_NAME" 90
-
-  if kubectl get pod "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" --no-headers 2>/dev/null | grep -q Running; then
-    # Check injected AWS environment variables
-    ENV_OUTPUT=$(kubectl exec "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" -- env 2>/dev/null)
-    if echo "$ENV_OUTPUT" | grep -q "AWS_ROLE_ARN\|AWS_WEB_IDENTITY_TOKEN_FILE"; then
-      pass "IRSA environment variables injected"
-
-      # Test S3 read access
-      S3_LS=$(kubectl exec "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" -- aws s3 ls s3://platform-lab-irsa-demo/ 2>&1)
-      if [ $? -eq 0 ]; then
-        pass "IRSA S3 ls succeeds (read access)"
-      else
-        skip "IRSA S3 read failed — bucket may not exist"
-      fi
-
-      # Test S3 read specific file content
-      S3_CONTENT=$(kubectl exec "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" -- \
-        aws s3 cp s3://platform-lab-irsa-demo/test-file.txt - 2>&1)
-      if [ $? -eq 0 ] && [ -n "$S3_CONTENT" ]; then
-        pass "IRSA S3 cp reads file content successfully"
-      else
-        skip "IRSA S3 cp test-file.txt failed — file may not exist in bucket"
-      fi
-
-      # Test S3 write should be denied
-      S3_WRITE=$(kubectl exec "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" -- \
-        bash -c "echo test | aws s3 cp - s3://platform-lab-irsa-demo/unauthorized-$STUDENT_NAME.txt" 2>&1)
-      if echo "$S3_WRITE" | grep -qi "denied\|error\|failed"; then
-        pass "IRSA S3 write denied (read-only role)"
-      else
-        skip "IRSA S3 write test inconclusive"
-      fi
-
-      # Verify STS identity
-      STS_OUTPUT=$(kubectl exec "irsa-test-$STUDENT_NAME" -n "$NS_IRSA" -- aws sts get-caller-identity 2>&1)
-      if echo "$STS_OUTPUT" | grep -q "assumed-role"; then
-        pass "IRSA STS identity shows assumed-role"
-      else
-        skip "IRSA STS identity check inconclusive"
-      fi
-    else
-      skip "IRSA env vars not injected — OIDC provider may not be configured"
-    fi
-  else
-    skip "IRSA test pod not running — skipping S3 tests"
-  fi
-else
-  skip "AWS CLI not configured — skipping all IRSA tests"
-  kubectl create namespace "$NS_IRSA" &>/dev/null
-fi
-
-###############################################################################
 # Cleanup
 ###############################################################################
 
@@ -368,5 +284,4 @@ kubectl delete clusterrolebinding "cluster-pod-reader-binding-$STUDENT_NAME" &>/
 kubectl delete clusterrole "cluster-pod-reader-$STUDENT_NAME" &>/dev/null
 cleanup_ns "$NS"
 cleanup_ns "$NS_RESTRICTED"
-cleanup_ns "$NS_IRSA"
 summary

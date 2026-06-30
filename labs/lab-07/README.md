@@ -1,5 +1,5 @@
-# Lab 7: RBAC, Security, and IRSA
-### Pod Security Standards, SecurityContexts, and IAM Roles for Service Accounts
+# Lab 7: RBAC and Pod Security
+### Roles, Bindings, Pod Security Standards, and SecurityContexts
 **Intermediate Kubernetes — Module 7 of 13**
 
 ---
@@ -12,16 +12,13 @@
 - Create Roles, RoleBindings, and ServiceAccounts
 - Apply Pod Security Standards and SecurityContexts
 - Test RBAC permission boundaries
-- *Optional:* Annotate ServiceAccounts with IAM roles (IRSA) and verify pod-level AWS access
 
 ### Prerequisites
 
 - Completion of Lab 1 with `kubectl` and cluster access configured
 - kubectl with cluster-admin access on a running EKS cluster
 
-> **Duration:** ~45-55 minutes (core), 60+ with IRSA
->
-> **Note:** Steps 9-11 (IRSA) are optional stretch goals. They require AWS-specific setup that may not work for all students.
+> **Duration:** ~45-55 minutes
 
 ---
 
@@ -209,83 +206,7 @@ kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- \
 
 ---
 
-## Optional Stretch Goals
-
-> These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
-
-## Part 3: IRSA -- IAM Roles for Service Accounts
-
-### Step 9: Create an IRSA-Annotated ServiceAccount
-
-The cluster includes a pre-provisioned IAM role (`platform-lab-irsa-s3-reader`) shared by all students. Its trust policy allows any `s3-reader-*` ServiceAccount in any `lab07-irsa-*` namespace to assume it, and it grants read-only access to the demo S3 bucket.
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/platform-lab-irsa-s3-reader"
-echo "Role ARN: $ROLE_ARN"
-```
-
-```bash
-kubectl create namespace lab07-irsa-$STUDENT_NAME
-
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: s3-reader-$STUDENT_NAME
-  namespace: lab07-irsa-$STUDENT_NAME
-  annotations:
-    eks.amazonaws.com/role-arn: "${ROLE_ARN}"
-EOF
-```
-
----
-
-### Step 10: Deploy and Test an IRSA Pod
-
-<!-- Creates a pod with the IRSA-annotated ServiceAccount to test S3 access -->
-
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < irsa-test-pod.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready \
-  pod/irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME --timeout=60s
-
-# Test S3 read access
-kubectl exec irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME \
-  -- aws s3 ls s3://platform-lab-irsa-demo/
-
-kubectl exec irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME \
-  -- aws s3 cp s3://platform-lab-irsa-demo/test-file.txt -
-
-# Test S3 write (should be denied)
-kubectl exec irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME \
-  -- bash -c "echo test | aws s3 cp - \
-    s3://platform-lab-irsa-demo/unauthorized-$STUDENT_NAME.txt"
-```
-
-> ✅ **Checkpoint:** `s3 ls` and `s3 cp` (read) succeed. Write returns **AccessDenied**.
-
----
-
-### Step 11: Inspect the IRSA Credential Chain
-
-```bash
-kubectl exec irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME \
-  -- env | grep AWS
-
-kubectl exec irsa-test-$STUDENT_NAME -n lab07-irsa-$STUDENT_NAME \
-  -- aws sts get-caller-identity
-```
-
-> ✅ **Checkpoint:** `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` are injected. The STS identity ARN contains `assumed-role/platform-lab-irsa-s3-reader`.
-
-> ⚠️ **Troubleshooting:** If `sts get-caller-identity` shows the EC2 instance role, IRSA is not working. Verify the `eks.amazonaws.com/role-arn` annotation and OIDC provider configuration.
-
----
-
-## Step 12: Clean Up
+## Step 9: Clean Up
 
 ```bash
 kubectl delete clusterrolebinding cluster-pod-reader-binding-$STUDENT_NAME
@@ -293,7 +214,6 @@ kubectl delete clusterrole cluster-pod-reader-$STUDENT_NAME
 
 kubectl delete namespace lab07-$STUDENT_NAME
 kubectl delete namespace lab07-restricted-$STUDENT_NAME
-kubectl delete namespace lab07-irsa-$STUDENT_NAME
 ```
 
 ---
@@ -304,7 +224,6 @@ kubectl delete namespace lab07-irsa-$STUDENT_NAME
 - Roles are namespace-scoped; ClusterRoles are cluster-scoped; bind them with RoleBindings or ClusterRoleBindings
 - Pod Security Standards (restricted, baseline, privileged) enforce security profiles at the namespace level
 - SecurityContext settings (`runAsNonRoot`, `readOnlyRootFilesystem`, `drop: ALL`) provide defense-in-depth
-- IRSA provides pod-level IAM identities via projected service-account tokens -- no long-lived AWS keys needed
 
 ---
 
