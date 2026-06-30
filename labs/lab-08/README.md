@@ -201,36 +201,43 @@ kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
 
 ## Step 8: Debug a Broken Policy
 
-Apply this intentionally broken policy and find the bugs:
+First deploy a small client pod we'll reuse to test reachability. Keep it **running** (don't use a throwaway `--rm` pod) — a cold pod's first DNS lookup + connection can take several seconds and a tight `curl` timeout would look like a policy failure when it isn't:
+
+```bash
+kubectl run test-client --image=curlimages/curl -n lab08-$STUDENT_NAME \
+  --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/test-client -n lab08-$STUDENT_NAME --timeout=60s
+```
+
+Now apply this intentionally broken policy and test from the client:
 
 <!-- Creates a NetworkPolicy with two intentional bugs for debugging practice -->
 
-Apply the manifest:
-
 ```bash
 envsubst '$STUDENT_NAME' < broken-policy.yaml | kubectl apply -f -
-kubectl run test-client --image=nginx:1.25 -n lab08-$STUDENT_NAME --rm -it \
-  --restart=Never -- curl -s --max-time 3 \
+
+kubectl exec test-client -n lab08-$STUDENT_NAME -- \
+  curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
   http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
 ```
 
-> ⚠️ **Two bugs:** (1) `from.podSelector` matches `tier: frontend` (self-referencing) -- should be `from: []` to allow all sources. (2) Port is `8080` but frontend listens on `80`.
+> ⚠️ **Result: `HTTP 000` (the request times out).** Two bugs: (1) `from.podSelector` matches `tier: frontend` (self-referencing) -- should be `from: []` to allow all sources. (2) Port is `8080` but the frontend listens on `80`.
 
 ### Fix the Broken Policy
 
 <!-- Creates the corrected NetworkPolicy (from: [] and port: 80) -->
 
-Apply the manifest:
+Apply the corrected policy and re-test with the **same** client pod:
 
 ```bash
 envsubst '$STUDENT_NAME' < fixed-policy.yaml | kubectl apply -f -
-kubectl run test-client --image=nginx:1.25 \
-  -n lab08-$STUDENT_NAME --rm -it --restart=Never -- \
-  curl -s --max-time 3 \
+
+kubectl exec test-client -n lab08-$STUDENT_NAME -- \
+  curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
   http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
 ```
 
-> ✅ **Checkpoint:** The test client can now reach the frontend.
+> ✅ **Checkpoint:** The same client now gets **`HTTP 200`** — the fixed policy (`from: []`, port `80`) allows traffic from any source on the port the frontend actually serves. (`-o /dev/null -w "HTTP %{http_code}"` prints a clear status code instead of the raw HTML page.)
 
 ---
 
