@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: quota-$STUDENT_NAME
+spec:
+  limits:
+    - type: Container
+      # Applied to containers that DON'T set their own requests/limits.
+      default:            # -> becomes the container's limits
+        cpu: 500m
+        memory: 256Mi
+      defaultRequest:     # -> becomes the container's requests
+        cpu: 100m
+        memory: 128Mi
+      # Guardrails: a container may not ask for more/less than these.
+      max:
+        cpu: "1"
+        memory: 1Gi
+      min:
+        cpu: 50m
+        memory: 64Mi

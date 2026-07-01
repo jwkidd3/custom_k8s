@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: quota-$STUDENT_NAME
+spec:
+  # 3 x 400m = 1200m requested, but the quota only allows 1000m (requests.cpu: 1).
+  # The Deployment will get stuck below its desired replica count — the quota
+  # rejects the replica that would push it over.
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.25
+          resources:
+            requests:
+              cpu: 400m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

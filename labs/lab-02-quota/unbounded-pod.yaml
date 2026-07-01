@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-resources
+  namespace: quota-$STUDENT_NAME
+  labels:
+    app: quota-demo
+spec:
+  containers:
+    - name: app
+      image: nginx:1.25
+      # Deliberately NO resources block. With a ResourceQuota that constrains
+      # requests/limits, this is REJECTED — until a LimitRange supplies defaults.
