@@ -79,8 +79,8 @@
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="title-slide">
                 <h1>&#129513; Custom Resource Definitions</h1>
                 <h2>Extending the Kubernetes API</h2>
-                <h3>Intermediate Kubernetes &mdash; Extending Kubernetes (companion to Module 13)</h3>
-                <aside class="notes">Almost every tool in this course — Flux, cert-manager, Gateway API, Kyverno — extends Kubernetes through CRDs. This companion covers what a CRD is, how custom resources behave, and how controllers turn them into action.</aside>
+                <h3>Intermediate Kubernetes &mdash; Extending Kubernetes (companion to Module 5)</h3>
+                <aside class="notes">Almost every platform tool students will meet — the Gateway API in the very next module, plus Flux, cert-manager, and Kyverno running the cluster — extends Kubernetes through CRDs. Placed here (after the core objects, before Gateway API) so custom resources aren't a mystery when they appear. Covers what a CRD is, how custom resources behave, and how controllers turn them into action.</aside>
             </section>
 
             <!-- Objectives -->
@@ -101,7 +101,7 @@
                 <h2>&#129504; Why Extend the API?</h2>
                 <div class="two-columns">
                     <div class="card">
-                        <h4>You already rely on it</h4>
+                        <h4>Where you'll see it</h4>
                         <ul>
                             <li>Flux &mdash; <code>HelmRelease</code>, <code>Kustomization</code></li>
                             <li>cert-manager &mdash; <code>Certificate</code></li>
@@ -119,7 +119,7 @@
                     </div>
                 </div>
                 <div class="key-point">A CRD lets the cluster store and serve <em>your</em> concepts as first-class API objects.</div>
-                <aside class="notes">Point out that everything they configured with YAML this week that wasn't a core kind was a custom resource.</aside>
+                <aside class="notes">Point out that the Gateway API (next module) and the platform tools (Flux, cert-manager, Kyverno) are all custom resources — this lab is what makes them readable.</aside>
             </section>
 
             <!-- Section: CRD -->
@@ -194,7 +194,7 @@
 
             <!-- Real examples -->
             <section>
-                <h2>&#127760; You've Been Using Operators All Week</h2>
+                <h2>&#127760; Operators You'll Meet in This Course</h2>
                 <table>
                     <thead>
                         <tr><th>Custom Resource</th><th>The controller reconciles it into...</th></tr>
@@ -207,7 +207,7 @@
                     </tbody>
                 </table>
                 <div class="key-point">Building the controller is the operator pattern (frameworks: Kubebuilder, Operator SDK) &mdash; a subject of its own.</div>
-                <aside class="notes">Reassure: writing operators is advanced, but understanding CRDs demystifies every platform tool they touch.</aside>
+                <aside class="notes">Reassure: writing operators is advanced, but understanding CRDs now demystifies every platform tool they're about to touch — starting with the Gateway API next.</aside>
             </section>
 
             <!-- Lab Callout -->
@@ -232,9 +232,9 @@
                     <li><strong>Custom resources</strong> behave like built-ins: same verbs, labels, RBAC, and output formats.</li>
                     <li>An <strong>OpenAPI schema</strong> validates specs; printer columns, short names, and <code>explain</code> make the type discoverable.</li>
                     <li>A CRD is only the <strong>API</strong>; a <strong>controller/operator</strong> reconciles custom resources into real state.</li>
-                    <li>Flux, cert-manager, Gateway API, and Kyverno are all CRDs + controllers &mdash; now you can read them.</li>
+                    <li>Flux, cert-manager, Gateway API, and Kyverno are all CRDs + controllers &mdash; you'll recognize them as the course continues.</li>
                 </ul>
-                <aside class="notes">Wrap up: CRDs are how Kubernetes is extended; controllers are how that extension acts. Together they're the operator pattern.</aside>
+                <aside class="notes">Wrap up: CRDs are how Kubernetes is extended; controllers are how that extension acts. They'll see this pattern everywhere from the next module on.</aside>
             </section>
 
         </div>

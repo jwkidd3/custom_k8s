@@ -38,14 +38,14 @@ script_for() {
     2s|scheduling)   echo "$SCRIPT_DIR/test-lab-02-scheduling.sh" ;;
     2j|jobs)         echo "$SCRIPT_DIR/test-lab-02-jobs.sh" ;;
     2q|quota)        echo "$SCRIPT_DIR/test-lab-02-quota.sh" ;;
-    crd|crds)        echo "$SCRIPT_DIR/test-lab-13-crds.sh" ;;
+    crd|crds)        echo "$SCRIPT_DIR/test-lab-05-crds.sh" ;;
     *)               printf "%s/test-lab-%02d.sh\n" "$SCRIPT_DIR" "$1" ;;
   esac
 }
 
 # Lab list
 if [ $# -eq 0 ]; then
-  LABS=(platform 1 1p 2 2s 2j 2q 3 4 5 6 7 8 9 10 11 12 13 crd)
+  LABS=(platform 1 1p 2 2s 2j 2q 3 4 5 crd 6 7 8 9 10 11 12 13)
 else
   LABS=("$@")
 fi

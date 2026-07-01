@@ -1,6 +1,6 @@
-# Lab 13 (Part 2): Custom Resource Definitions (CRDs)
+# Lab 5 (Part 2): Custom Resource Definitions (CRDs)
 ### Extending the Kubernetes API with Your Own Resource Types
-**Intermediate Kubernetes — Extending Kubernetes (companion to Module 13)**
+**Intermediate Kubernetes — Extending Kubernetes (companion to Module 5)**
 
 ---
 
@@ -16,7 +16,7 @@
 
 ### Why this matters
 
-Almost every tool you've used in this course — Flux (`HelmRelease`), cert-manager (`Certificate`), Gateway API (`HTTPRoute`), Kyverno (`ClusterPolicy`) — extends Kubernetes through **CRDs**. A CRD teaches the API server a new `kind`; a **controller** then watches those objects and makes the cluster match them. This lab covers the first half (the CRD + custom resources); the operator pattern is the second half.
+Almost every platform tool you'll meet as this course continues — the **Gateway API** (`HTTPRoute`) in the very next module, plus Flux (`HelmRelease`), cert-manager (`Certificate`), and Kyverno (`ClusterPolicy`) running your cluster — extends Kubernetes through **CRDs**. A CRD teaches the API server a new `kind`; a **controller** then watches those objects and makes the cluster match them. You now know the core built-in objects (Pods, Deployments, Services, ConfigMaps, Secrets); this lab shows how to define your *own* kinds alongside them. It covers the first half (the CRD + custom resources); the operator pattern is the second half.
 
 > **Note:** A CRD is **cluster-scoped**, so this lab gives each student their own API **group** (`<usernumber>.example.com`) to avoid collisions. Set `STUDENT_NAME` and the commands below resolve to your group.
 
@@ -115,7 +115,7 @@ Your `Website` is just **data** right now. Creating one didn't start any Pods, b
 2. **Reconciles** reality toward the spec (e.g. create a Deployment + Service for `blog.example.com` with 3 replicas),
 3. **Reports** back through the resource's `status`.
 
-You've already used operators built exactly this way:
+The platform running your cluster uses operators built exactly this way — and you'll meet several as the course continues:
 
 | CRD | Controller does... |
 |-----|--------------------|

@@ -1,6 +1,6 @@
 #!/bin/bash
 ###############################################################################
-# Lab 13 (Part 2) Test: Custom Resource Definitions (CRDs)
+# Lab 5 (Part 2) Test: Custom Resource Definitions (CRDs)
 # Covers: register a CRD, create a custom resource, printer columns, OpenAPI
 #         schema validation (invalid CR rejected), discovery via api-resources.
 # NOTE: a CRD is cluster-scoped — this test uses a per-run API group and deletes
@@ -8,14 +8,14 @@
 ###############################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LAB_DIR="$(cd "$SCRIPT_DIR/../lab-13-crds" && pwd)"
+LAB_DIR="$(cd "$SCRIPT_DIR/../lab-05-crds" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 export STUDENT_NAME="test-$$"
 GROUP="$STUDENT_NAME.example.com"
 NS="crd-$STUDENT_NAME"
 CRD="websites.$GROUP"
-echo "=== Lab 13 (Part 2): CRDs (ns: $NS, group: $GROUP) ==="
+echo "=== Lab 5 (Part 2): CRDs (ns: $NS, group: $GROUP) ==="
 echo ""
 
 kubectl create namespace "$NS" &>/dev/null
