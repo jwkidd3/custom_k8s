@@ -42,6 +42,10 @@ assert_eq "maxUnavailable is 1" "1" "$MAX_UNAVAIL"
 READY=$(kubectl get deployment webapp -n "$NS" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
 assert_eq "v1 has 2 ready replicas" "2" "$READY"
 
+# Annotate revision 1 so rollout history carries a meaningful CHANGE-CAUSE.
+kubectl annotate deployment/webapp \
+  kubernetes.io/change-cause="Initial deploy: v1 (nginx 1.24)" -n "$NS" --overwrite &>/dev/null
+
 # Expose service for curl tests
 kubectl expose deployment webapp --port=80 --target-port=80 --name=webapp-svc -n "$NS" &>/dev/null
 sleep 3
@@ -63,6 +67,8 @@ kubectl create configmap app-v2-page \
 kubectl set image deployment/webapp nginx=nginx:1.25 -n "$NS" &>/dev/null
 kubectl patch deployment webapp -n "$NS" --type=json \
   -p='[{"op":"replace","path":"/spec/template/spec/volumes/0/configMap/name","value":"app-v2-page"}]' &>/dev/null
+kubectl annotate deployment/webapp \
+  kubernetes.io/change-cause="Rolling update to v2 (nginx 1.25 + v2 page)" -n "$NS" --overwrite &>/dev/null
 wait_for_deploy "$NS" webapp 90
 
 V2_IMAGE=$(kubectl get deployment webapp -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
@@ -89,6 +95,7 @@ fi
 
 HISTORY=$(kubectl rollout history deployment/webapp -n "$NS" 2>/dev/null)
 assert_contains "rollout history exists" "$HISTORY" "REVISION"
+assert_contains "rollout history records the change-cause annotation" "$HISTORY" "Rolling update to v2"
 
 # ─── Step 4: Rollback to v1 ─────────────────────────────────────────────────
 

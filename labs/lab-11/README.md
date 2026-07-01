@@ -49,6 +49,11 @@ Apply and expose:
 ```bash
 envsubst '$STUDENT_NAME' < app-deploy-v1.yaml | kubectl apply -f -
 
+# Record WHY this revision exists — it surfaces in `kubectl rollout history`.
+kubectl annotate deployment/webapp \
+  kubernetes.io/change-cause="Initial deploy: v1 (nginx 1.24)" \
+  -n deploy-lab-$STUDENT_NAME --overwrite
+
 kubectl expose deployment webapp \
   --port=80 --target-port=80 \
   --name=webapp-svc \
@@ -82,6 +87,12 @@ kubectl patch deployment webapp -n deploy-lab-$STUDENT_NAME --type=json \
   -p='[{"op":"replace",
   "path":"/spec/template/spec/volumes/0/configMap/name",
   "value":"app-v2-page"}]'
+
+# Annotate the new revision so its reason is captured in the history.
+# (kubectl set image --record is deprecated — annotate explicitly instead.)
+kubectl annotate deployment/webapp \
+  kubernetes.io/change-cause="Rolling update to v2 (nginx 1.25 + v2 page)" \
+  -n deploy-lab-$STUDENT_NAME --overwrite
 ```
 
 ---
@@ -93,6 +104,16 @@ kubectl rollout status deployment/webapp -n deploy-lab-$STUDENT_NAME
 
 kubectl rollout history deployment/webapp -n deploy-lab-$STUDENT_NAME
 ```
+
+> ✅ **Checkpoint:** Because you annotated each change, `rollout history` shows a meaningful **CHANGE-CAUSE** for every revision:
+>
+> ```
+> REVISION  CHANGE-CAUSE
+> 1         Initial deploy: v1 (nginx 1.24)
+> 2         Rolling update to v2 (nginx 1.25 + v2 page)
+> ```
+>
+> Without the annotation this column is **blank** — you'd have no record of *why* each revision exists, which makes choosing a rollback target guesswork. Set `kubernetes.io/change-cause` on every change (ideally in your CI/CD pipeline); the old `kubectl ... --record` flag that used to do this automatically is **deprecated**.
 
 Verify v2 is serving:
 

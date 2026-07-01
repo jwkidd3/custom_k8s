@@ -178,7 +178,32 @@
                         <strong>Database Caveat:</strong> Rollback reverts pods but not database migrations. Always ensure backward-compatible schema changes.
                     </div>
                 </div>
-                <aside class="notes">Rollback reuses old ReplicaSets, so it scales the old one up and new one down. The change-cause annotation is important -- without it, rollout history shows blank descriptions. Always annotate in CI/CD. Note: rolling back the deployment does not undo database migrations.</aside>
+                <aside class="notes">Rollback reuses old ReplicaSets, so it scales the old one up and new one down. Note: rolling back the deployment does not undo database migrations. The next slide covers annotating revisions so rollout history is actually useful.</aside>
+            </section>
+
+            <!-- Slide 7b: Annotating Rollouts (change-cause) -->
+            <section>
+                <h2>&#128221; Annotating Rollouts — Change Cause</h2>
+                <div class="two-columns">
+                    <div class="concept-box">
+                        <h4>Why annotate</h4>
+                        <ul>
+                            <li><code>rollout history</code>'s <strong>CHANGE-CAUSE</strong> is blank unless you set it</li>
+                            <li>Turns revisions into an <strong>auditable changelog</strong></li>
+                            <li>Makes picking a <strong>rollback target</strong> deliberate, not guesswork</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>How</h4>
+                        <ul>
+                            <li><code>kubectl annotate deploy/webapp \</code><br><code>&nbsp;&nbsp;kubernetes.io/change-cause="..." --overwrite</code></li>
+                            <li>Set it on <strong>every</strong> change &mdash; ideally from CI/CD (commit msg, build ID)</li>
+                            <li>The old <code>kubectl ... --record</code> flag is <strong>deprecated</strong></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="key-point">A revision you can't explain is a revision you can't safely roll back to &mdash; annotate as part of the deploy.</div>
+                <aside class="notes">Promote change-cause from a footnote to a habit: every image bump or config change gets one, so rollout history reads like a git log for the Deployment. Set it in CI from the commit message or build metadata. The lab has students annotate both the initial deploy and the v2 rollout, then read the populated CHANGE-CAUSE column.</aside>
             </section>
 
             <!-- Slide 8: Section — Blue-Green Deployments -->
