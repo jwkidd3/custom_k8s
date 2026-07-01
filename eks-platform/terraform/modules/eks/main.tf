@@ -91,6 +91,21 @@ module "eks" {
       }
     }
 
+    # IAM user jkidd — cluster admin for direct kubectl access.
+    jkidd = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/jkidd"
+      type          = "STANDARD"
+
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+
     # Student role — attached to Cloud9 EC2 instances via instance profile.
     student = {
       principal_arn     = aws_iam_role.student.arn
