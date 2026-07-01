@@ -36,13 +36,14 @@ script_for() {
     platform)        echo "$SCRIPT_DIR/test-platform.sh" ;;
     1p|pods)         echo "$SCRIPT_DIR/test-lab-01-pods.sh" ;;
     2s|scheduling)   echo "$SCRIPT_DIR/test-lab-02-scheduling.sh" ;;
+    2j|jobs)         echo "$SCRIPT_DIR/test-lab-02-jobs.sh" ;;
     *)               printf "%s/test-lab-%02d.sh\n" "$SCRIPT_DIR" "$1" ;;
   esac
 }
 
 # Lab list
 if [ $# -eq 0 ]; then
-  LABS=(platform 1 1p 2 2s 3 4 5 6 7 8 9 10 11 12 13)
+  LABS=(platform 1 1p 2 2s 2j 3 4 5 6 7 8 9 10 11 12 13)
 else
   LABS=("$@")
 fi

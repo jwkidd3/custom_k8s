@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-hello
+  namespace: lab-jobs-$STUDENT_NAME
+spec:
+  # Retry the Pod up to 4 times before marking the Job failed.
+  backoffLimit: 4
+  # Clean the Job (and its Pod) up 5 minutes after it finishes.
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      # Jobs use Never or OnFailure — never Always (a Job Pod is meant to end).
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Job started on $HOSTNAME"
+              for i in $(seq 1 5); do
+                echo "processing item $i of 5"
+                sleep 1
+              done
+              echo "Job complete"
