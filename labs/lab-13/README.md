@@ -56,9 +56,14 @@ echo "ArgoCD password: $ARGOCD_PWD"
 Access the ArgoCD UI:
 
 ```bash
-# The server Service name varies by install — look it up, then port-forward it
-ARGOCD_SVC=$(kubectl get svc -n argocd -o name | grep -E 'server$' | head -1)
-kubectl port-forward -n argocd "$ARGOCD_SVC" 8080:443 &
+# The Service name varies by install (release-name prefix), so select the ArgoCD
+# server by its well-known label. A name match on 'server$' is WRONG — it also
+# matches 'argocd-repo-server', which has no port 443.
+ARGOCD_SVC=$(kubectl get svc -n argocd -l app.kubernetes.io/name=argocd-server -o name | head -1)
+# This ArgoCD server runs with --insecure, so forward its HTTP port (80) and open
+# http:// — forwarding 443 would serve plain HTTP over a TLS port and just hang.
+echo "Forwarding $ARGOCD_SVC on http://localhost:8080 ..."
+kubectl port-forward -n argocd "$ARGOCD_SVC" 8080:80 &
 ```
 
 > ⚠️ **Cloud9:** Click **Preview → Preview Running Application** to open the UI. Login: `admin` / password from above.
