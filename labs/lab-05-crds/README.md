@@ -33,7 +33,7 @@ Approximately 25-35 minutes
 ## Environment Setup
 
 ```bash
-cd ~/environment/custom_k8s/labs/lab-13-crds
+cd ~/environment/custom_k8s/labs/lab-05-crds
 export STUDENT_NAME=<usernumber>
 export GROUP=$STUDENT_NAME.example.com    # your personal API group
 echo "Student: $STUDENT_NAME  Group: $GROUP"
