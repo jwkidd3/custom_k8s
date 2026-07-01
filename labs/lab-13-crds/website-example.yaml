@@ -1,0 +1,9 @@
+apiVersion: $STUDENT_NAME.example.com/v1
+kind: Website
+metadata:
+  name: blog
+  namespace: crd-$STUDENT_NAME
+spec:
+  domain: blog.example.com
+  replicas: 3
+  theme: dark

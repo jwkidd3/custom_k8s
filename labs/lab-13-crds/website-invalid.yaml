@@ -1,0 +1,12 @@
+apiVersion: $STUDENT_NAME.example.com/v1
+kind: Website
+metadata:
+  name: broken
+  namespace: crd-$STUDENT_NAME
+spec:
+  # Three schema violations the API server will reject:
+  #   - 'domain' is required but missing
+  #   - 'replicas' 99 exceeds maximum: 10
+  #   - 'theme' must be one of [light, dark]
+  replicas: 99
+  theme: neon
