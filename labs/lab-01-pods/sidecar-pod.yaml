@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-demo
+  namespace: lab-pods-$STUDENT_NAME
+  labels:
+    app: sidecar-demo
+spec:
+  # Two containers run side by side in the same Pod. They share the network
+  # (localhost) and the 'content' volume. The sidecar keeps regenerating the
+  # page the main container serves — the classic content-sync sidecar pattern.
+  containers:
+    - name: web
+      image: nginx:1.25
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: content
+          mountPath: /usr/share/nginx/html
+    - name: content-sync
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          while true; do
+            echo "<h1>Served by nginx, refreshed by the sidecar</h1><p>Last update: $(date)</p>" > /data/index.html
+            echo "content-sync: refreshed index.html at $(date)"
+            sleep 10
+          done
+      volumeMounts:
+        - name: content
+          mountPath: /data
+  volumes:
+    - name: content
+      emptyDir: {}

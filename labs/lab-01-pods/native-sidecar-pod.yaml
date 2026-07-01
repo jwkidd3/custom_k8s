@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: native-sidecar-demo
+  namespace: lab-pods-$STUDENT_NAME
+  labels:
+    app: native-sidecar-demo
+spec:
+  # A "native sidecar" is an init container with restartPolicy: Always (stable in
+  # Kubernetes 1.29+). Unlike a plain multi-container Pod, it STARTS before the
+  # app containers and is guaranteed to be running when they start — ideal for
+  # log shippers, proxies, and config agents. It also does not block Pod
+  # completion the way a normal init container would.
+  initContainers:
+    - name: log-shipper
+      image: busybox:1.36
+      restartPolicy: Always          # <-- this turns the init container into a sidecar
+      command:
+        - sh
+        - -c
+        - |
+          echo "log-shipper started before the app"
+          # Follow the app's log file and echo it to stdout (as a real shipper would forward it)
+          touch /var/log/app/app.log
+          tail -n +1 -F /var/log/app/app.log
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log/app
+  containers:
+    - name: app
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          i=0
+          while true; do
+            i=$((i + 1))
+            echo "app event $i at $(date)" >> /var/log/app/app.log
+            sleep 5
+          done
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log/app
+  volumes:
+    - name: logs
+      emptyDir: {}
