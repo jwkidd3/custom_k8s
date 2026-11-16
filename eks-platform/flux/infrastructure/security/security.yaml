@@ -39,7 +39,10 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: kyverno
-      version: ">=3.2.0"
+      # Pin below chart 3.10.0 (app v1.20.0), which removed execution of
+      # legacy kyverno.io/v1 ClusterPolicy types this course still ships.
+      # 3.9.2 == app v1.19.2, the last release that accepts them.
+      version: ">=3.2.0,<3.10.0"
   values:
     replicaCount: 3
 ---
@@ -60,7 +63,8 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: kyverno
-      version: ">=3.2.0"
+      # Keep in lockstep with the kyverno chart pin above (< 3.10.0 / app v1.20).
+      version: ">=3.2.0,<3.10.0"
   values:
     podSecurityStandard: baseline
     validationFailureAction: Audit
