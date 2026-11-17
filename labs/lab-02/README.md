@@ -1,24 +1,29 @@
-# Lab 2: Configuring Autoscaling
-### HPA, VPA, and Cluster Autoscaler in Practice
-**Intermediate Kubernetes — Module 2 of 13**
+# Lab 2: Init Containers & Multi-Container Pods
+### Composing Pods — Ordered Setup, Sidecars, and Native Sidecars
+**Intermediate Kubernetes — Pods Deep Dive (Module 2 of 18)**
 
 ---
 
 ## Lab Overview
 
-### Objectives
+### What You Will Do
 
-- Verify metrics-server and configure a Horizontal Pod Autoscaler (HPA)
-- Generate load and observe automatic scaling in real time
-- Create an HPA with custom metrics using the v2 API
-- Explore Vertical Pod Autoscaler (VPA) and Cluster Autoscaler behavior
+- Use an **init container** to prepare state before the app container starts
+- Build a **multi-container Pod** where a **sidecar** shares a volume and the network with the main container
+- Use a **native sidecar** (an init container with `restartPolicy: Always`, stable in 1.29+) as a log shipper
+- Inspect per-container logs and exec into a specific container
+
+### Why this matters
+
+A Pod is not "one container" — it's a group of containers that share a network namespace (they reach each other on `localhost`), can share volumes, and are co-scheduled and co-located. That shared context is what makes **init containers** and **sidecars** possible, and both are everyday tools for application developers.
 
 ### Prerequisites
 
-- Completed Lab 1 with `kubectl` and cluster access configured
-- metrics-server installed in the cluster
+- Completion of Lab 1 with `kubectl` and cluster access configured
 
-> ⏱ **Duration:** ~45 minutes
+### Duration
+
+Approximately 25-35 minutes
 
 ---
 
@@ -28,204 +33,120 @@
 cd ~/environment/custom_k8s/labs/lab-02
 export STUDENT_NAME=<usernumber>
 echo "Student: $STUDENT_NAME"
-kubectl config set-context --current --namespace=default
-```
-
-> ⚠️ **Important:** This shared cluster is used by all 22 students. Your `$STUDENT_NAME` ensures your resources don't conflict with others.
-
----
-
-## Step 1: Verify Metrics Server
-
-```bash
-kubectl get pods -n kube-system | grep metrics-server
-kubectl get apiservices | grep metrics
-kubectl top nodes
-```
-
-> ⚠️ **Troubleshooting:** If metrics-server is not installed, run:
-> ```bash
-> kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-> kubectl wait --for=condition=ready pod -l k8s-app=metrics-server -n kube-system --timeout=120s
-> ```
-
----
-
-## Step 2: Deploy a CPU-Intensive Application
-
-```bash
-kubectl create namespace lab02-$STUDENT_NAME
-kubectl config set-context --current --namespace=lab02-$STUDENT_NAME
-```
-
-<!-- Creates a php-apache Deployment with CPU requests/limits for HPA testing -->
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < php-apache-deployment.yaml | kubectl apply -f -
-kubectl expose deployment php-apache --port=80 --target-port=80
-kubectl get all -n lab02-$STUDENT_NAME
+kubectl create namespace lab-pods-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab-pods-$STUDENT_NAME
 ```
 
 ---
 
-## Step 3: Create a Horizontal Pod Autoscaler
+## Step 1: Init Container — Ordered Setup
+
+Init containers run **to completion, in order, before any app container starts**. If an init container fails, the Pod restarts it until it succeeds — the app containers never start until every init container has finished.
+
+Here the init container writes an HTML page into a shared `emptyDir` volume, then nginx serves it:
 
 ```bash
-kubectl autoscale deployment php-apache \
-  --cpu-percent=50 \
-  --min=1 \
-  --max=10 \
-  -n lab02-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < init-container-pod.yaml | kubectl apply -f -
 
-kubectl get hpa -n lab02-$STUDENT_NAME
-kubectl describe hpa php-apache -n lab02-$STUDENT_NAME
+# Watch the Init phase, then Running (Ctrl-C once it's Running)
+kubectl get pod init-demo -n lab-pods-$STUDENT_NAME -w
 ```
 
-> ✅ **Checkpoint:** The HPA should show `TARGETS: <current>/50%`, `MINPODS: 1`, `MAXPODS: 10`, `REPLICAS: 1`. The current value may show `<unknown>/50%` for 15-30 seconds while metrics are collected.
+While it starts you'll briefly see `Init:0/1`, then `PodInitializing`, then `Running`. Inspect what happened:
+
+```bash
+# The init container ran to completion
+kubectl get pod init-demo -n lab-pods-$STUDENT_NAME \
+  -o jsonpath='{.status.initContainerStatuses[0].state.terminated.reason}{"\n"}'
+
+# Its logs (note the -c to select a container)
+kubectl logs init-demo -n lab-pods-$STUDENT_NAME -c setup
+
+# The app serves the content the init container prepared
+kubectl exec init-demo -n lab-pods-$STUDENT_NAME -c web -- curl -s localhost:80
+```
+
+> ✅ **Checkpoint:** The init container's state is **`Completed`**, its logs show `init container finished`, and nginx serves the page **"written by the init container"** — proof the init container ran first and set things up for the app.
 
 ---
 
-## Step 4: Generate Load
+## Step 2: Multi-Container Pod — the Sidecar Pattern
 
-Run a load generator in a separate pod:
-
-```bash
-kubectl run load-generator \
-  --image=busybox:1.36 \
-  --restart=Never \
-  -n lab02-$STUDENT_NAME \
-  -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://php-apache; done"
-```
-
-Verify the load generator is running:
+A **sidecar** is a helper container that runs **alongside** the main container in the same Pod, extending it. Here a `content-sync` sidecar regenerates the page every 10 seconds, and nginx serves it from the **shared volume** — they cooperate through `emptyDir`:
 
 ```bash
-kubectl get pod load-generator -n lab02-$STUDENT_NAME
-kubectl logs load-generator -n lab02-$STUDENT_NAME --tail=5
+envsubst '$STUDENT_NAME' < sidecar-pod.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/sidecar-demo -n lab-pods-$STUDENT_NAME --timeout=60s
+
+# Two containers, both Ready (READY column shows 2/2)
+kubectl get pod sidecar-demo -n lab-pods-$STUDENT_NAME
+kubectl get pod sidecar-demo -n lab-pods-$STUDENT_NAME \
+  -o jsonpath='{.spec.containers[*].name}{"\n"}'
 ```
 
-> ✅ **Checkpoint:** The pod should be in `Running` state and logs should show the php-apache response (`OK!`).
+Observe the two containers cooperating:
 
-> ⚠️ **Important:** Open a **second terminal** for the next step. Keep the load generator running.
+```bash
+# The sidecar's logs vs the web container's logs (-c selects the container)
+kubectl logs sidecar-demo -n lab-pods-$STUDENT_NAME -c content-sync --tail=2
+
+# nginx serves what the sidecar wrote to the shared volume
+kubectl exec sidecar-demo -n lab-pods-$STUDENT_NAME -c web -- curl -s localhost:80
+
+# Run it again after ~10s — the timestamp changes because the sidecar refreshed it
+kubectl exec sidecar-demo -n lab-pods-$STUDENT_NAME -c web -- curl -s localhost:80
+```
+
+> ✅ **Checkpoint:** The Pod shows **`2/2`** Ready. nginx serves **"refreshed by the sidecar"**, and the timestamp advances between requests — two containers sharing one volume, running concurrently in one Pod. They'd also reach each other over `localhost`.
 
 ---
 
-## Step 5: Observe Horizontal Scaling
+## Step 3: Native Sidecars (1.29+)
 
-In your **second terminal**, watch the HPA and pods respond:
+A plain sidecar (Step 2) has two limitations: it isn't guaranteed to be **running before** the app starts, and it keeps a Job/Pod from ever "completing." A **native sidecar** fixes both — it's an **init container with `restartPolicy: Always`**. It starts before the app containers, stays running alongside them, and doesn't block Pod completion. This is the modern pattern for log shippers, proxies, and config agents.
 
 ```bash
-# Set your student name in the new terminal
-export STUDENT_NAME=<usernumber>
+envsubst '$STUDENT_NAME' < native-sidecar-pod.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/native-sidecar-demo -n lab-pods-$STUDENT_NAME --timeout=60s
 
-# Watch HPA status (updates every 15 seconds)
-kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
-
-# In another terminal, watch pods scale up
-kubectl get pods -n lab02-$STUDENT_NAME --watch
+# The sidecar is declared under initContainers, but with restartPolicy: Always
+kubectl get pod native-sidecar-demo -n lab-pods-$STUDENT_NAME \
+  -o jsonpath='{.spec.initContainers[0].name}: restartPolicy={.spec.initContainers[0].restartPolicy}{"\n"}'
 ```
 
-> ✅ **Checkpoint:** Within 1-3 minutes, TARGETS should increase above 50% and REPLICAS should scale up (up to 10). Check HPA events with `kubectl describe hpa php-apache -n lab02-$STUDENT_NAME`.
+The `log-shipper` sidecar started first and is tailing the app's log file — its stdout is the app's forwarded logs:
+
+```bash
+sleep 10
+kubectl logs native-sidecar-demo -n lab-pods-$STUDENT_NAME -c log-shipper
+```
+
+> ✅ **Checkpoint:** `restartPolicy=Always` on an init container, and `kubectl logs -c log-shipper` shows **`app event N`** lines — the sidecar came up first and is streaming the app's log, exactly what a real log-forwarding sidecar does.
 
 ---
 
-## Step 6: Stop Load and Observe Scale-Down
+## When to Use Which
 
-```bash
-kubectl delete pod load-generator -n lab02-$STUDENT_NAME
-
-# Watch the HPA scale down (~5 minutes)
-kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
-```
-
-> ✅ **Checkpoint:** After approximately 5 minutes, REPLICAS should decrease back to 1. The default stabilization window is 5 minutes to prevent thrashing.
+| Need | Use |
+|------|-----|
+| One-time setup / wait for a dependency before the app starts | **Init container** (runs to completion, then exits) |
+| A helper that runs *for the life of* the app (proxy, log shipper, cache warmer) | **Native sidecar** (`initContainers` + `restartPolicy: Always`) |
+| Two peers cooperating, ordering not critical | **Plain multi-container Pod** |
 
 ---
 
-## Step 7: HPA with Custom Metrics (v2 API)
+## Step 4: Clean Up
 
 ```bash
-kubectl delete hpa php-apache -n lab02-$STUDENT_NAME
-```
-
-<!-- Creates HPA v2 with CPU and memory metrics plus custom scaling behavior -->
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < hpa-v2.yaml | kubectl apply -f -
-kubectl describe hpa php-apache-v2 -n lab02-$STUDENT_NAME
-```
-
-> ✅ **Checkpoint:** The HPA should show two metrics targets: `cpu: <current>/50%` and `memory: <current>/80%`.
-
----
-
-## Step 8: Vertical Pod Autoscaler (VPA)
-
-```bash
-# Check for VPA CRDs
-kubectl get crd | grep verticalpodautoscaler
-```
-
-> 📝 **Note:** VPA is optional. If the CRDs are not installed, review the manifest below but skip the apply step.
-
-<!-- Creates a VPA in Off mode (recommendation only) for php-apache -->
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < vpa.yaml | kubectl apply -f -
-kubectl describe vpa php-apache-vpa -n lab02-$STUDENT_NAME
-```
-
-> ✅ **Checkpoint:** The VPA status should show recommendation levels: **lowerBound**, **target**, and **upperBound**.
-
-> ⚠️ Do not use VPA in `Auto` mode with HPA on the same CPU/memory metrics — they will conflict.
-
----
-
-## Step 9: Cluster Autoscaler Behavior
-
-> ⚠️ **Instructor Demo:** In a shared cluster, only run this step when directed by the instructor.
-
-<!-- Creates an inflate Deployment with 5 replicas to pressure cluster capacity -->
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < inflate-deployment.yaml | kubectl apply -f -
-
-# Watch pods - some should be Pending if cluster is at capacity
-kubectl get pods -n lab02-$STUDENT_NAME -l app=inflate --watch
-```
-
-> ✅ **Checkpoint:** Some pods will show `Pending` with `FailedScheduling: insufficient cpu`. If Cluster Autoscaler is active, new nodes may join within 2-5 minutes.
-
----
-
-## Part 2: Scheduling and Placement
-
-Continue with **[Lab 2 (Part 2): Scheduling and Placement](../lab-02-scheduling/README.md)** — node affinity, pod affinity/anti-affinity, taints & tolerations, topology spread, and DaemonSets. It uses its own `sched-$STUDENT_NAME` namespace, so you can run it before or after the cleanup below.
-
----
-
-## Step 10: Clean Up
-
-```bash
-kubectl config set-context --current --namespace=default
-kubectl delete namespace lab02-$STUDENT_NAME
+kubectl delete namespace lab-pods-$STUDENT_NAME
 ```
 
 ---
 
 ## Summary
 
-- HPA scales pod count based on CPU, memory, or custom metrics
-- Resource requests are mandatory for HPA to function
-- The v2 API provides fine-grained control over scaling behavior
-- VPA right-sizes resource requests; use Off mode to gather data first
-- Cluster Autoscaler adds nodes when pods cannot be scheduled
-- All three autoscalers work at different layers and complement each other
-
----
-
-*Lab 2 Complete — Up Next: Lab 3 — Storage and StatefulSets*
+- A Pod is a group of co-scheduled containers sharing a **network namespace** (`localhost`) and, optionally, **volumes**.
+- **Init containers** run to completion, in order, **before** app containers — use them for setup and dependency gating.
+- **Sidecars** run **alongside** the main container to extend it (logging, proxying, content sync).
+- **Native sidecars** (`initContainers` + `restartPolicy: Always`, 1.29+) start before the app, run for its lifetime, and don't block Pod completion.
+- `kubectl logs -c <container>` and `kubectl exec ... -c <container>` target a specific container in a multi-container Pod.

@@ -1,6 +1,6 @@
-# Lab 5: ConfigMaps and Secrets
-### Externalizing Configuration and Managing Sensitive Data
-**Intermediate Kubernetes — Module 5 of 13**
+# Lab 5: Jobs and CronJobs
+### Run-to-Completion, Parallelism, and Scheduled Workloads
+**Intermediate Kubernetes — Batch Workloads (Module 5 of 18)**
 
 ---
 
@@ -8,15 +8,22 @@
 
 ### What You Will Do
 
-- Create ConfigMaps from literals and files; consume as env vars and volume mounts
-- Create Secrets (Opaque, TLS) and consume as env vars and volume mounts
-- Mark ConfigMaps as immutable and observe update rejection
-- Combine ConfigMap, Secret, and Downward API data using projected volumes
-- *Optional:* Sync secrets from HashiCorp Vault using External Secrets Operator
+- Run a **Job** that executes a task to completion
+- Run a **parallel Job** with `completions` and `parallelism`
+- Schedule recurring work with a **CronJob**
+- Trigger a CronJob **on demand** and **suspend** it
+
+### Why this matters
+
+Not every workload is a long-running server. Batch processing, data migrations, report generation, backups, and cleanup tasks all *start, do work, and finish*. **Jobs** run a Pod to completion (with retries); **CronJobs** run Jobs on a schedule. Both are first-class `batch/v1` workloads.
 
 ### Prerequisites
 
-- Completion of Lab 1 with `kubectl` and cluster access configured  |  **Duration:** ~30-40 minutes
+- Completion of Lab 1 with `kubectl` and cluster access configured
+
+### Duration
+
+Approximately 25-35 minutes
 
 ---
 
@@ -26,286 +33,111 @@
 cd ~/environment/custom_k8s/labs/lab-05
 export STUDENT_NAME=<usernumber>
 echo "Student: $STUDENT_NAME"
-kubectl config set-context --current --namespace=default
+kubectl create namespace lab-jobs-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab-jobs-$STUDENT_NAME
 ```
 
 ---
 
-## Step 1: Create ConfigMaps from Literals and Files
+## Step 1: A Basic Job
 
-Create a namespace and a ConfigMap using literal key-value pairs:
-
-```bash
-kubectl create namespace lab05-$STUDENT_NAME
-
-kubectl create configmap app-config \
-    --from-literal=APP_ENV=production \
-    --from-literal=APP_LOG_LEVEL=info \
-    --from-literal=APP_MAX_CONNECTIONS=100 \
-    --from-literal=APP_CACHE_TTL=3600 \
-    -n lab05-$STUDENT_NAME
-
-kubectl get configmap app-config -n lab05-$STUDENT_NAME -o yaml
-```
-
-Now create configuration files and load them into a ConfigMap. The `nginx.conf` file is static, while `app.properties` contains your student name:
+A **Job** creates one or more Pods and ensures a specified number of them **successfully complete**. Unlike a Deployment, a Job's Pod is *meant to exit* — so `restartPolicy` is `Never` or `OnFailure`, never `Always`.
 
 ```bash
-cp nginx.conf /tmp/nginx.conf
-envsubst '$STUDENT_NAME' < app.properties > /tmp/app.properties
+envsubst '$STUDENT_NAME' < job.yaml | kubectl apply -f -
 
-kubectl create configmap app-files \
-    --from-file=nginx.conf=/tmp/nginx.conf \
-    --from-file=app.properties=/tmp/app.properties \
-    -n lab05-$STUDENT_NAME
+# Watch it run and complete (COMPLETIONS goes 0/1 -> 1/1)
+kubectl get job batch-hello -n lab-jobs-$STUDENT_NAME -w
 ```
+
+Once it's `1/1`, inspect it:
+
+```bash
+# Wait for the Complete condition, then read the results
+kubectl wait --for=condition=Complete job/batch-hello -n lab-jobs-$STUDENT_NAME --timeout=90s
+
+kubectl get job batch-hello -n lab-jobs-$STUDENT_NAME
+kubectl logs job/batch-hello -n lab-jobs-$STUDENT_NAME
+```
+
+> ✅ **Checkpoint:** The Job shows `COMPLETIONS 1/1`, its status `succeeded` count is **1**, and the logs end with **"Job complete"**. `backoffLimit: 4` means a failing Pod would be retried up to 4 times before the Job is marked failed.
 
 ---
 
-## Step 2: Consume ConfigMap as Environment Variables
+## Step 2: Parallel Jobs
 
-### Using envFrom (inject all keys)
-
-<!-- Creates a pod that imports all ConfigMap keys as env vars -->
-
-Apply the manifest:
+A Job can run many Pods. `completions` is how many successful runs you need; `parallelism` is how many run **at once**. Here we want **6** completions, **3** at a time:
 
 ```bash
-envsubst '$STUDENT_NAME' < pod-envfrom.yaml | kubectl apply -f -
-kubectl logs env-from-demo -n lab05-$STUDENT_NAME | grep APP_
+envsubst '$STUDENT_NAME' < parallel-job.yaml | kubectl apply -f -
+
+# Watch pods appear 3 at a time until 6 have completed
+kubectl get pods -n lab-jobs-$STUDENT_NAME -l job-name=batch-parallel -w
 ```
-
-### Using valueFrom (inject specific keys with renaming)
-
-<!-- Creates a pod that selectively maps ConfigMap keys to different env var names -->
-
-Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < pod-valuefrom.yaml | kubectl apply -f -
-kubectl logs value-from-demo -n lab05-$STUDENT_NAME
+kubectl wait --for=condition=Complete job/batch-parallel -n lab-jobs-$STUDENT_NAME --timeout=120s
+kubectl get job batch-parallel -n lab-jobs-$STUDENT_NAME \
+  -o custom-columns='NAME:.metadata.name,COMPLETIONS:.spec.completions,PARALLELISM:.spec.parallelism,SUCCEEDED:.status.succeeded'
 ```
 
-> ✅ **Checkpoint:** Output is `Env=production Log=info`.
+> ✅ **Checkpoint:** You see Pods start in waves of **3**, and the Job finishes with **`SUCCEEDED 6`**. This is the fan-out pattern for batch work — split it into N units and run P at a time.
 
 ---
 
-## Step 3: Consume ConfigMap as Volume Mounts
+## Step 3: CronJobs
 
-Mount the configuration files into an nginx container:
-
-<!-- Creates a pod with ConfigMap data mounted as files -->
-
-Apply the manifest:
+A **CronJob** creates a Job on a **schedule** (standard cron syntax). This one runs every minute:
 
 ```bash
-envsubst '$STUDENT_NAME' < pod-volume-mount.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/volume-mount-demo \
-    -n lab05-$STUDENT_NAME --timeout=60s
+envsubst '$STUDENT_NAME' < cronjob.yaml | kubectl apply -f -
 
-kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
-    cat /etc/nginx/conf.d/default.conf
-kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
-    cat /etc/app/app.properties
-kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
-    curl -s http://localhost/health
+kubectl get cronjob hello-cron -n lab-jobs-$STUDENT_NAME
 ```
 
-> ✅ **Checkpoint:** The health endpoint returns `OK`.
+Wait for the next minute boundary, then look at the Jobs it created:
+
+```bash
+# After ~1 minute, a Job appears with a timestamped name
+kubectl get jobs -n lab-jobs-$STUDENT_NAME
+kubectl logs -l app -n lab-jobs-$STUDENT_NAME --tail=5 2>/dev/null \
+  || kubectl logs job/$(kubectl get jobs -n lab-jobs-$STUDENT_NAME \
+       -o jsonpath='{.items[0].metadata.name}') -n lab-jobs-$STUDENT_NAME
+```
+
+> ✅ **Checkpoint:** After a minute, `kubectl get jobs` shows a Job named `hello-cron-<timestamp>`, and its logs print **"Hello from the scheduled job"**. `concurrencyPolicy: Forbid` skips a run if the previous one is still going; `successfulJobsHistoryLimit` caps how many finished Jobs are kept.
+
+### Trigger on demand and suspend
+
+You don't have to wait for the schedule — create a Job **from** the CronJob immediately, and **suspend** the schedule when you don't want it firing:
+
+```bash
+# Run it now (great for testing a CronJob's Job template)
+kubectl create job --from=cronjob/hello-cron manual-run -n lab-jobs-$STUDENT_NAME
+kubectl wait --for=condition=Complete job/manual-run -n lab-jobs-$STUDENT_NAME --timeout=90s
+kubectl logs job/manual-run -n lab-jobs-$STUDENT_NAME
+
+# Pause the schedule (no new Jobs until resumed)
+kubectl patch cronjob hello-cron -n lab-jobs-$STUDENT_NAME -p '{"spec":{"suspend":true}}'
+kubectl get cronjob hello-cron -n lab-jobs-$STUDENT_NAME
+```
+
+> ✅ **Checkpoint:** `manual-run` completes immediately with the same output, and after patching, the CronJob's `SUSPEND` column reads **`True`** — no further Jobs are scheduled until you set it back to `false`.
 
 ---
 
-## Step 4: Create Secrets
-
-### Create an Opaque Secret
+## Step 4: Clean Up
 
 ```bash
-kubectl create secret generic db-credentials \
-    --from-literal=DB_USERNAME=app_user \
-    --from-literal=DB_PASSWORD='S3cur3P@ssw0rd!' \
-    --from-literal=DB_HOST=postgres-svc.lab05-$STUDENT_NAME.svc.cluster.local \
-    -n lab05-$STUDENT_NAME
-
-kubectl get secret db-credentials -n lab05-$STUDENT_NAME \
-    -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
-```
-
-### Create a TLS Secret
-
-```bash
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout tls.key -out tls.crt \
-    -subj "/CN=app.lab05-$STUDENT_NAME.local/O=Lab"
-
-kubectl create secret tls app-tls \
-    --cert=tls.crt \
-    --key=tls.key \
-    -n lab05-$STUDENT_NAME
-```
-
----
-
-## Step 5: Consume Secrets as Env Vars and Volume Mounts
-
-### Secret as Environment Variables
-
-<!-- Creates a pod that reads Secret keys into env vars -->
-
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < pod-secret-env.yaml | kubectl apply -f -
-kubectl logs secret-env-demo -n lab05-$STUDENT_NAME
-```
-
-### Secret as Volume Mount
-
-<!-- Creates a pod that mounts a Secret as files with restricted permissions -->
-
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < pod-secret-volume.yaml | kubectl apply -f -
-kubectl logs secret-vol-demo -n lab05-$STUDENT_NAME
-kubectl exec secret-vol-demo -n lab05-$STUDENT_NAME -- cat /etc/db-creds/DB_USERNAME
-```
-
-> ✅ **Checkpoint:** Secret files are mounted with `0400` permissions. (A plain `ls -l` shows the keys as `lrwxrwxrwx` symlinks — that's Kubernetes' atomic-writer layout; the `0400` applies to the real files they point to, which `ls -lL` dereferences to.)
-
----
-
-## Step 6: Immutable ConfigMaps
-
-Kubernetes allows ConfigMaps to be marked as **immutable** — once set, neither the data nor the `immutable` flag can be changed. This protects production configuration from accidental edits and lets the kubelet skip watch overhead.
-
-Apply the immutable ConfigMap:
-
-```bash
-envsubst '$STUDENT_NAME' < immutable-config.yaml | kubectl apply -f -
-```
-
-Inspect the ConfigMap and confirm it is immutable:
-
-```bash
-kubectl get configmap immutable-app-config -n lab05-$STUDENT_NAME -o yaml
-```
-
-> Note the `immutable: true` field and the two data keys: `APP_VERSION` and `FEATURE_FLAGS`.
-
-Now attempt to update a value:
-
-```bash
-kubectl patch configmap immutable-app-config -n lab05-$STUDENT_NAME \
-    --type merge -p '{"data":{"APP_VERSION":"3.0.0"}}'
-```
-
-> ✅ **Checkpoint:** The patch command is rejected with an error indicating the ConfigMap is immutable. To change an immutable ConfigMap you must delete and recreate it.
-
----
-
-## Step 7: Projected Volumes
-
-A **projected volume** combines multiple sources — ConfigMaps, Secrets, and the Downward API — into a single mount point. This is useful when a container needs configuration from several origins under one directory.
-
-Apply the projected-volume pod:
-
-```bash
-envsubst '$STUDENT_NAME' < pod-projected.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/projected-demo \
-    -n lab05-$STUDENT_NAME --timeout=60s
-```
-
-List the contents of the projected mount and verify each source:
-
-```bash
-# ConfigMap value (from app-config)
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/APP_ENV
-
-# Secret value (from db-credentials)
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/DB_USERNAME
-
-# Downward API values
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/namespace
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/labels
-```
-
-> ✅ **Checkpoint:** `APP_ENV` returns `production`, `DB_USERNAME` returns `app_user`, and `namespace` returns `lab05-<usernumber>`. All four files coexist under `/etc/projected`.
-
----
-
----
-
-## Optional Stretch Goals
-
-> These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
-
-### Step 8: Sync Secrets from Vault with External Secrets Operator
-
-The cluster has HashiCorp Vault and the External Secrets Operator (ESO) pre-installed. ESO watches for `ExternalSecret` resources and automatically syncs secrets from Vault into native Kubernetes Secrets.
-
-#### Verify the Platform Components
-
-```bash
-# Check Vault is running
-kubectl get pods -n vault
-
-# Check ESO is running
-kubectl get pods -n external-secrets
-
-# Check the ClusterSecretStore is available
-kubectl get clustersecretstore vault-store
-```
-
-> ✅ **Checkpoint:** The `vault-store` ClusterSecretStore should show `Ready` status.
-
-#### Create an ExternalSecret
-
-Review `external-secret.yaml` — it defines an ExternalSecret that pulls database credentials from Vault's `prod/database` path:
-
-```bash
-envsubst '$STUDENT_NAME' < external-secret.yaml | kubectl apply -f -
-```
-
-#### Verify the Synced Secret
-
-```bash
-# Check ExternalSecret status (should show SecretSynced)
-kubectl get externalsecret db-external -n lab05-$STUDENT_NAME
-
-# View the Kubernetes Secret that ESO created
-kubectl get secret db-from-vault -n lab05-$STUDENT_NAME
-
-# Decode the synced values
-kubectl get secret db-from-vault -n lab05-$STUDENT_NAME \
-    -o jsonpath='{.data.DB_USERNAME}' | base64 -d
-echo
-
-kubectl get secret db-from-vault -n lab05-$STUDENT_NAME \
-    -o jsonpath='{.data.DB_HOST}' | base64 -d
-echo
-```
-
-> ✅ **Checkpoint:** The `db-from-vault` Secret should contain `DB_USERNAME=appuser`, `DB_PASSWORD`, and `DB_HOST=db.internal.local` — matching the values seeded in Vault during cluster setup.
-
----
-
-## Clean Up
-
-```bash
-kubectl delete namespace lab05-$STUDENT_NAME
-rm -f tls.key tls.crt /tmp/nginx.conf /tmp/app.properties
+kubectl delete namespace lab-jobs-$STUDENT_NAME
 ```
 
 ---
 
 ## Summary
 
-- **ConfigMaps:** Created from literals and files; consumed via `envFrom`, `valueFrom`, and volume mounts
-- **Immutable ConfigMaps:** Prevent accidental changes to production configuration; must be deleted and recreated to update
-- **Secrets:** Same consumption patterns as ConfigMaps; base64-encoded, not encrypted by default; use RBAC to restrict access and enable KMS encryption at rest
-- **Projected Volumes:** Combine ConfigMap, Secret, and Downward API sources into a single mount point
-- **External Secrets:** ESO syncs secrets from Vault into native Kubernetes Secrets via `ExternalSecret` CRDs — no secret values stored in Git
-
----
-
-*Lab 5 Complete — Up Next: Lab 6 — Ingress and Gateway API*
+- A **Job** runs a Pod **to completion** with retries (`backoffLimit`); use `restartPolicy: Never`/`OnFailure`.
+- **`completions`** sets how many successes are needed; **`parallelism`** sets how many run concurrently.
+- A **CronJob** creates Jobs on a cron **schedule**, with `concurrencyPolicy` and history limits to control overlap and retention.
+- **`kubectl create job --from=cronjob/<name>`** runs a CronJob's template on demand; **`suspend: true`** pauses the schedule.
+- **`ttlSecondsAfterFinished`** auto-cleans finished Jobs so they don't pile up.

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pods: Init Containers & Multi-Container Patterns</title>
+    <title>Scheduling &amp; Placement | Intermediate Kubernetes</title>
     <style>/* reveal.min.css (vendored, reveal.js 4.3.1) */
 /*!
 * reveal.js 4.3.1
@@ -75,206 +75,176 @@
 <body>
     <div class="reveal">
         <div class="slides">
-
+            <!-- Title Slide -->
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="title-slide">
-                <h1>&#128230; Pods: Init Containers &amp; Multi-Container Patterns</h1>
-                <h2>Composing Pods from Cooperating Containers</h2>
-                <h3>Intermediate Kubernetes &mdash; Pods Deep Dive (companion to Module 1)</h3>
-                <aside class="notes">A Pod is rarely just one container. This companion module unpacks the Pod as a group of cooperating containers: init containers for ordered setup, and sidecars (including native sidecars) for helpers that run alongside the app.</aside>
+                <h1>&#127919; Scheduling &amp; Placement</h1>
+                <h2>Steering Where Your Pods Land</h2>
+                <h3>Intermediate Kubernetes &mdash; Module 4 of 18</h3>
+                <div class="module-progress">
+                    <div class="step completed"></div>
+                    <div class="step completed"></div>
+                    <div class="step completed"></div>
+                    <div class="step active"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                </div>
+                <aside class="notes">This module covers how kube-scheduler places Pods and how to steer it: nodeSelector, node affinity, taints &amp; tolerations, pod affinity/anti-affinity, topology spread, priority &amp; preemption, and DaemonSets.</aside>
             </section>
 
             <!-- Objectives -->
             <section>
-                <h2>&#127919; Objectives</h2>
+                <h2>&#127919; Module Objectives</h2>
                 <ul>
-                    <li>Explain what containers in a Pod actually share &mdash; network, storage, lifecycle</li>
-                    <li>Use <strong>init containers</strong> for ordered, run-to-completion setup</li>
-                    <li>Build <strong>multi-container Pods</strong> with the sidecar pattern</li>
-                    <li>Recognize the ambassador and adapter patterns</li>
-                    <li>Use <strong>native sidecars</strong> (<code>restartPolicy: Always</code> init containers, 1.29+)</li>
-                    <li>Target a specific container with <code>kubectl logs -c</code> / <code>exec -c</code></li>
+                    <li>Explain how kube-scheduler places Pods and what it weighs</li>
+                    <li>Constrain placement with <code>nodeSelector</code> and node affinity</li>
+                    <li>Repel and attract Pods with taints &amp; tolerations</li>
+                    <li>Co-locate or spread Pods with pod affinity/anti-affinity and topology spread</li>
+                    <li>Prioritize critical workloads with PriorityClasses and preemption</li>
+                    <li>Run exactly one Pod per node with DaemonSets</li>
                 </ul>
-                <aside class="notes">By the end, students can compose a Pod from cooperating containers and choose the right tool: init container vs sidecar vs native sidecar.</aside>
+                <aside class="notes">Scheduling complements scaling: autoscaling adds capacity, scheduling decides placement on it.</aside>
             </section>
 
-            <!-- Section: The Pod -->
-            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#129309; A Pod Is a Team of Containers</h2>
-                <h3>The smallest deployable unit &mdash; not "one container"</h3>
-                <aside class="notes">The Pod, not the container, is Kubernetes' atomic unit precisely so that tightly-coupled containers can share context. That shared context is what makes init containers and sidecars possible.</aside>
-            </section>
-
-            <!-- What's in a Pod -->
+            <!-- How the scheduler places pods -->
             <section>
-                <h2>&#128295; What Containers in a Pod Share</h2>
+                <h2>&#129518; How the Scheduler Places Pods</h2>
                 <div class="two-columns">
                     <div class="card">
-                        <h4>Shared</h4>
+                        <h4>What kube-scheduler weighs</h4>
                         <ul>
-                            <li><strong>Network namespace</strong> &mdash; same IP, reach each other on <code>localhost</code></li>
-                            <li><strong>Volumes</strong> &mdash; mount the same <code>emptyDir</code>/PVC</li>
-                            <li><strong>Lifecycle &amp; node</strong> &mdash; scheduled together, live and die together</li>
+                            <li>Node free CPU/memory vs the Pod's resource <strong>requests</strong></li>
+                            <li>Taints, affinity rules, topology constraints</li>
+                            <li>Spreads Pods across nodes for resilience</li>
                         </ul>
                     </div>
                     <div class="card">
-                        <h4>Not shared (by default)</h4>
+                        <h4>The simplest control</h4>
                         <ul>
-                            <li><strong>Filesystem</strong> &mdash; each container has its own image rootfs</li>
-                            <li><strong>Process namespace</strong> &mdash; isolated unless <code>shareProcessNamespace</code></li>
-                            <li><strong>Restarts</strong> &mdash; one container can restart without the others</li>
+                            <li><strong>nodeSelector</strong> &mdash; match node labels</li>
+                            <li>Built-in labels: <code>topology.kubernetes.io/zone</code>, <code>kubernetes.io/hostname</code>, <code>node.kubernetes.io/instance-type</code></li>
                         </ul>
                     </div>
                 </div>
-                <div class="key-point">Because they share the network and volumes, containers in a Pod can cooperate closely &mdash; that is the whole point of putting them together.</div>
-                <aside class="notes">Emphasize localhost + shared volume. These two facts explain every multi-container pattern that follows.</aside>
+                <div class="key-point"><strong>Default behavior is good:</strong> let the scheduler place Pods unless you have a real reason to constrain them.</div>
+                <aside class="notes">The scheduler binds each Pod to a node. You only override it for real needs — hardware (GPU), spreading for HA, or compliance.</aside>
             </section>
 
-            <!-- Section: Init Containers -->
-            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#9203; Init Containers</h2>
-                <h3>Ordered, run-to-completion setup before the app starts</h3>
-                <aside class="notes">Init containers gate the app's startup: nothing in spec.containers runs until every init container has succeeded.</aside>
-            </section>
-
-            <!-- Init containers -->
+            <!-- Taints/tolerations + node affinity -->
             <section>
-                <h2>&#128736;&#65039; Init Containers &mdash; How They Work</h2>
-                <div class="two-columns">
-                    <div class="concept-box">
-                        <h4>Rules</h4>
-                        <ul>
-                            <li>Run <strong>in order</strong>, one at a time</li>
-                            <li>Each must <strong>succeed</strong> before the next starts</li>
-                            <li>App containers wait until <strong>all</strong> are done</li>
-                            <li>A failure is retried (per <code>restartPolicy</code>)</li>
-                        </ul>
-                    </div>
-                    <div class="card">
-                        <h4>Good for</h4>
-                        <ul>
-                            <li>Waiting for a dependency (DB, service) to be ready</li>
-                            <li>Fetching config, secrets, or templates</li>
-                            <li>Running schema migrations</li>
-                            <li>Setting permissions / seeding a shared volume</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="key-point">Declared under <code>spec.initContainers</code>. They share the Pod's volumes, so they can prepare state the app container then consumes.</div>
-                <aside class="notes">The lab's init-demo writes an index.html into a shared emptyDir; nginx then serves it. Init container completes, app starts.</aside>
-            </section>
-
-            <!-- Section: Multi-container -->
-            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#128101; Multi-Container Patterns</h2>
-                <h3>Helpers that run alongside the main container</h3>
-                <aside class="notes">Three canonical patterns: sidecar (extend), ambassador (proxy out), adapter (transform out).</aside>
-            </section>
-
-            <!-- Sidecar -->
-            <section>
-                <h2>&#127949;&#65039; The Sidecar Pattern</h2>
-                <div class="concept-box">
-                    <h4>A helper container that extends the main one</h4>
-                    <p>Runs <strong>concurrently</strong> in the same Pod, cooperating through the shared network and volumes &mdash; the main container stays focused on its job.</p>
-                </div>
-                <ul>
-                    <li><strong>Log shipper</strong> &mdash; tails the app's log file and forwards it</li>
-                    <li><strong>Content sync</strong> &mdash; pulls/writes content the app serves</li>
-                    <li><strong>Proxy / service mesh</strong> &mdash; Envoy intercepting traffic (e.g. Istio)</li>
-                </ul>
-                <div class="key-point">In the lab, a <code>content-sync</code> sidecar rewrites the page every 10s into a shared volume that nginx serves.</div>
-                <aside class="notes">The sidecar is by far the most common pattern; service meshes inject one automatically.</aside>
-            </section>
-
-            <!-- Ambassador & Adapter -->
-            <section>
-                <h2>&#128737;&#65039; Ambassador &amp; Adapter</h2>
-                <div class="two-columns">
-                    <div class="card">
-                        <h4>Ambassador</h4>
-                        <p>Proxies the app's <strong>outbound</strong> connections. The app talks to <code>localhost</code>; the ambassador handles sharding, retries, or TLS to the real backend.</p>
-                        <p><em>e.g. a local Redis/DB proxy</em></p>
-                    </div>
-                    <div class="card">
-                        <h4>Adapter</h4>
-                        <p>Normalizes the app's <strong>output</strong> for the outside world &mdash; reformatting logs or exposing metrics in a standard shape.</p>
-                        <p><em>e.g. a Prometheus exporter sidecar</em></p>
-                    </div>
-                </div>
-                <div class="key-point">All three (sidecar, ambassador, adapter) are just multi-container Pods &mdash; they differ in <em>which direction</em> the helper faces.</div>
-                <aside class="notes">Adapter faces outward (standardize output), ambassador faces outward for egress (proxy), sidecar augments the app itself.</aside>
-            </section>
-
-            <!-- Native sidecars -->
-            <section>
-                <h2>&#10024; Native Sidecars (1.29+)</h2>
-                <div class="highlight-box success">
-                    A <strong>native sidecar</strong> is an <code>initContainers</code> entry with <code>restartPolicy: Always</code>. It starts <strong>before</strong> the app, runs <strong>for the app's lifetime</strong>, and does <strong>not</strong> block Pod completion.
-                </div>
-                <div class="two-columns">
-                    <div class="card">
-                        <h4>Fixes plain-sidecar gaps</h4>
-                        <ul>
-                            <li>Guaranteed running before the app starts</li>
-                            <li>A Job's Pod can now actually <em>complete</em></li>
-                            <li>Shuts down after the app on termination</li>
-                        </ul>
-                    </div>
-                    <div class="card">
-                        <h4>Ideal for</h4>
-                        <ul>
-                            <li>Log shippers &amp; metrics agents</li>
-                            <li>Service-mesh proxies</li>
-                            <li>Config / secret refreshers</li>
-                        </ul>
-                    </div>
-                </div>
-                <aside class="notes">Before native sidecars, a logging sidecar kept a Job Pod "Running" forever. restartPolicy: Always on an init container solves ordering AND completion.</aside>
-            </section>
-
-            <!-- Decision -->
-            <section>
-                <h2>&#129504; Which One Do I Reach For?</h2>
+                <h2>&#129683; Keeping Pods On (or Off) Nodes</h2>
                 <table>
-                    <thead>
-                        <tr><th>Need</th><th>Use</th></tr>
-                    </thead>
+                    <thead><tr><th>Mechanism</th><th>Driven by</th><th>What it does</th></tr></thead>
                     <tbody>
-                        <tr><td>One-time setup / wait for a dependency, then exit</td><td><strong>Init container</strong></td></tr>
-                        <tr><td>Helper that runs for the app's whole life</td><td><strong>Native sidecar</strong> (<code>initContainers</code> + <code>restartPolicy: Always</code>)</td></tr>
-                        <tr><td>Two peers cooperating, ordering not critical</td><td><strong>Plain multi-container Pod</strong></td></tr>
-                        <tr><td>Truly independent workloads</td><td><strong>Separate Pods</strong> (don't over-pack)</td></tr>
+                        <tr><td><strong>Taints &amp; Tolerations</strong></td><td>the node</td><td>A tainted node rejects Pods unless they <em>tolerate</em> the taint (GPU / dedicated nodes)</td></tr>
+                        <tr><td><strong>Node Affinity</strong></td><td>the Pod</td><td>Pod asks for nodes matching label rules &mdash; generalizes nodeSelector</td></tr>
                     </tbody>
                 </table>
-                <div class="key-point">Only co-locate containers that must share a lifecycle or a volume. When in doubt, separate Pods.</div>
-                <aside class="notes">A common anti-pattern is stuffing unrelated services into one Pod. Co-locate only for a real coupling (shared volume, localhost, lifecycle).</aside>
+                <div class="two-columns">
+                    <div class="card"><h4>required&hellip; <span style="font-weight:400;">(hard)</span></h4><p>Pod won't schedule unless the rule matches.</p></div>
+                    <div class="card"><h4>preferred&hellip; <span style="font-weight:400;">(soft)</span></h4><p>Weighted preference &mdash; still schedules if unmatched.</p></div>
+                </div>
+                <aside class="notes">Operators: In, NotIn, Exists, DoesNotExist, Gt, Lt. Taints+tolerations and node affinity are often combined — e.g. a GPU node carries a taint AND a label; the Pod adds a toleration AND node affinity.</aside>
             </section>
 
-            <!-- Lab Callout -->
-            <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="lab-callout">
-                <h2>&#128295; Lab: Init Containers &amp; Multi-Container Pods</h2>
-                <h3>Hands-on: compose Pods from cooperating containers</h3>
-                <ul>
-                    <li>Use an <strong>init container</strong> to prepare a shared volume before nginx starts</li>
-                    <li>Build a <strong>sidecar</strong> Pod (<code>2/2</code>) that refreshes the page nginx serves</li>
-                    <li>Run a <strong>native sidecar</strong> log shipper (<code>restartPolicy: Always</code>)</li>
-                    <li>Target individual containers with <code>kubectl logs -c</code> / <code>exec -c</code></li>
-                </ul>
-                <div class="highlight-box" style="margin-top: 20px;"><strong>Duration:</strong> ~25-35 minutes</div>
-                <aside class="notes">Students deploy all three pod shapes and observe ordering, shared volumes, and per-container logs.</aside>
-            </section>
-
-            <!-- Key Takeaways -->
+            <!-- Pod affinity / anti-affinity + topology spread -->
             <section>
-                <h2>&#127891; Key Takeaways</h2>
+                <h2>&#129523; Placement Relative to Other Pods</h2>
+                <div class="three-columns">
+                    <div class="card"><h4>Pod Affinity</h4><p>Co-locate with related Pods &mdash; e.g. an app near its cache, same zone.</p></div>
+                    <div class="card"><h4>Pod Anti-Affinity</h4><p>Spread replicas apart &mdash; one per node/zone.</p></div>
+                    <div class="card"><h4>Topology Spread</h4><p>Even distribution across a topology key (zones, nodes) within a skew budget.</p></div>
+                </div>
+                <div class="key-point"><strong>Use for HA:</strong> anti-affinity / topology spread stop all your replicas from sharing one node or zone.</div>
+                <aside class="notes">Anti-affinity and topologySpreadConstraints are the practical HA levers — keep replicas from co-locating so one node/zone failure can't take the whole service down.</aside>
+            </section>
+
+            <!-- Priority & preemption -->
+            <section>
+                <h2>&#9889; Priority &amp; Preemption</h2>
                 <ul>
-                    <li>A <strong>Pod</strong> is a group of co-scheduled containers sharing a network namespace (<code>localhost</code>) and volumes.</li>
-                    <li><strong>Init containers</strong> run to completion, in order, <em>before</em> app containers &mdash; setup and dependency gating.</li>
-                    <li><strong>Sidecars</strong> run alongside the app to extend it; <strong>ambassador</strong>/<strong>adapter</strong> are direction-specific variants.</li>
-                    <li><strong>Native sidecars</strong> (<code>initContainers</code> + <code>restartPolicy: Always</code>) start first, live with the app, and don't block completion.</li>
-                    <li><code>kubectl logs -c</code> and <code>exec -c</code> target one container in a multi-container Pod.</li>
+                    <li>A <strong>PriorityClass</strong> assigns a numeric priority to Pods</li>
+                    <li>When the cluster is full, the scheduler can <strong>preempt</strong> (evict) lower-priority Pods to make room for a higher-priority one</li>
+                    <li>Critical workloads schedule first; best-effort jobs yield</li>
                 </ul>
-                <aside class="notes">Wrap up: the shared Pod context is the foundation; init containers and sidecars are the everyday tools built on it.</aside>
+                <div class="highlight-box warning"><strong>Caution:</strong> preemption evicts <em>running</em> Pods &mdash; reserve high priority for genuinely critical workloads.</div>
+                <aside class="notes">Preemption is how the cluster guarantees room for critical Pods under contention. It pairs with the Cluster Autoscaler — preempt now, add a node, reschedule the evicted Pod.</aside>
+            </section>
+
+            <!-- DaemonSets -->
+            <section>
+                <h2>&#128230; DaemonSets &mdash; One Pod per Node</h2>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>What it is</h4>
+                        <ul>
+                            <li>Runs exactly one Pod on every node (or a labeled subset)</li>
+                            <li>New nodes automatically get the Pod; drained nodes drop it</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>Typical uses</h4>
+                        <ul>
+                            <li>Log/metrics agents (Fluent Bit), the CNI (<code>aws-node</code>), <code>kube-proxy</code>, CSI node drivers</li>
+                            <li>Anything that must run <em>on the node</em>, not just somewhere in the cluster</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="key-point"><strong>Deployment vs DaemonSet:</strong> a Deployment runs N replicas placed anywhere; a DaemonSet runs one per node. See them with <code>kubectl get daemonset -A</code>.</div>
+                <aside class="notes">Ties back to Lab 1 — the kube-system agents you observed (aws-node, kube-proxy, ebs-csi-node) are all DaemonSets.</aside>
+            </section>
+
+            <!-- Lab Callout: Scheduling (teaching above precedes the lab) -->
+            <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="lab-callout">
+                <h2>&#128295; Lab 4: Scheduling and Placement</h2>
+                <h3>Hands-on: Affinity, Taints, Topology Spread &amp; DaemonSets</h3>
+                <ul>
+                    <li>Pin a Pod to a zone with required node affinity &mdash; and watch an impossible match stay <code>Pending</code></li>
+                    <li>Co-locate a web Pod with its cache using pod affinity</li>
+                    <li>Spread replicas across nodes with pod anti-affinity</li>
+                    <li>Inspect taints and add a toleration to a Pod</li>
+                    <li>Balance Pods across zones with topology spread constraints</li>
+                    <li>Observe the cluster's DaemonSets &mdash; one Pod per node</li>
+                </ul>
+                <div class="highlight-box">
+                    <strong>Duration:</strong> ~25 minutes
+                </div>
+                <aside class="notes">Companion lab to the scheduling section. On a shared cluster, taints and DaemonSets are observed rather than created. Lab files live in labs/lab-04.</aside>
+            </section>
+
+            <!-- Summary -->
+            <section>
+                <h2>&#128218; Module 4 — Key Takeaways</h2>
+                <div class="concept-box">
+                    <ul>
+                        <li><strong>Scheduler defaults are good</strong> — only constrain placement for a real reason</li>
+                        <li><strong>nodeSelector &amp; node affinity</strong> — the Pod asks for matching nodes (required vs preferred)</li>
+                        <li><strong>Taints &amp; tolerations</strong> — the node repels Pods unless they tolerate it</li>
+                        <li><strong>Pod affinity / anti-affinity &amp; topology spread</strong> — co-locate or spread replicas for HA</li>
+                        <li><strong>PriorityClasses &amp; preemption</strong> — critical Pods schedule first under contention</li>
+                        <li><strong>DaemonSets</strong> — exactly one Pod per node for agents and drivers</li>
+                    </ul>
+                </div>
+                <aside class="notes">Key points: prefer defaults; use anti-affinity / topology spread for HA; reserve high priority for genuinely critical workloads.</aside>
+            </section>
+
+            <!-- Questions -->
+            <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="questions-slide" style="text-align: center;">
+                <h2>&#10067; Questions &amp; Discussion</h2>
+                <p>Where have you needed to control Pod placement in your own clusters?</p>
+                <p style="font-size: 0.9em; margin-top: 30px;">Up Next: Module 5 &mdash; Jobs &amp; CronJobs</p>
+                <aside class="notes">Common topics: GPU/dedicated nodes, spreading for HA across zones, priority for critical services.</aside>
             </section>
 
         </div>

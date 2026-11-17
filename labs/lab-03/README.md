@@ -1,6 +1,6 @@
-# Lab 3: Storage and StatefulSets
-### Persistent Volumes, Claims, and Stateful Workloads
-**Intermediate Kubernetes — Module 3 of 13**
+# Lab 3: Configuring Autoscaling
+### HPA, VPA, and Cluster Autoscaler in Practice
+**Intermediate Kubernetes — Module 3 of 18**
 
 ---
 
@@ -8,20 +8,17 @@
 
 ### Objectives
 
-- Explore StorageClasses and provisioners
-- Create PersistentVolumeClaims and mount volumes in pods
-- Deploy and manage StatefulSets with stable identities
-- Scale StatefulSets
-- *Optional:* Expand volumes
+- Verify metrics-server and configure a Horizontal Pod Autoscaler (HPA)
+- Generate load and observe automatic scaling in real time
+- Create an HPA with custom metrics using the v2 API
+- Explore Vertical Pod Autoscaler (VPA) and Cluster Autoscaler behavior
 
 ### Prerequisites
 
-- Access to the EKS cluster via `kubectl`
-- Completion of Lab 1 with `kubectl` and cluster access configured
+- Completed Lab 1 with `kubectl` and cluster access configured
+- metrics-server installed in the cluster
 
-> **Duration:** ~40-50 minutes
->
-> **Note:** Step 9 is an optional stretch goal for students who finish early.
+> ⏱ **Duration:** ~45 minutes
 
 ---
 
@@ -38,196 +35,176 @@ kubectl config set-context --current --namespace=default
 
 ---
 
-## Step 1: Explore StorageClasses
+## Step 1: Verify Metrics Server
 
 ```bash
-kubectl create namespace lab03-$STUDENT_NAME
-kubectl config set-context --current --namespace=lab03-$STUDENT_NAME
-kubectl get storageclass
-kubectl describe storageclass gp2
+kubectl get pods -n kube-system | grep metrics-server
+kubectl get apiservices | grep metrics
+kubectl top nodes
 ```
 
-> ✅ **Checkpoint:** You should see a `gp2` StorageClass with `WaitForFirstConsumer` binding mode, which defers volume creation until a pod needs it.
+> ⚠️ **Troubleshooting:** If metrics-server is not installed, run:
+> ```bash
+> kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+> kubectl wait --for=condition=ready pod -l k8s-app=metrics-server -n kube-system --timeout=120s
+> ```
 
 ---
 
-## Step 2: Create a PersistentVolumeClaim
+## Step 2: Deploy a CPU-Intensive Application
 
-<!-- Creates a 1Gi ReadWriteOnce PVC using gp2 StorageClass -->
+```bash
+kubectl create namespace lab02-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab02-$STUDENT_NAME
+```
+
+<!-- Creates a php-apache Deployment with CPU requests/limits for HPA testing -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < lab-pvc.yaml | kubectl apply -f -
-kubectl get pvc -n lab03-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < php-apache-deployment.yaml | kubectl apply -f -
+kubectl expose deployment php-apache --port=80 --target-port=80
+kubectl get all -n lab02-$STUDENT_NAME
 ```
-
-> 📝 **Note:** Status will be Pending until a pod mounts this PVC.
 
 ---
 
-## Step 3: Deploy a Pod with the PVC Mounted
+## Step 3: Create a Horizontal Pod Autoscaler
 
-<!-- Creates a data-writer pod that writes a timestamp to the PVC -->
+```bash
+kubectl autoscale deployment php-apache \
+  --cpu-percent=50 \
+  --min=1 \
+  --max=10 \
+  -n lab02-$STUDENT_NAME
+
+kubectl get hpa -n lab02-$STUDENT_NAME
+kubectl describe hpa php-apache -n lab02-$STUDENT_NAME
+```
+
+> ✅ **Checkpoint:** The HPA should show `TARGETS: <current>/50%`, `MINPODS: 1`, `MAXPODS: 10`, `REPLICAS: 1`. The current value may show `<unknown>/50%` for 15-30 seconds while metrics are collected.
+
+---
+
+## Step 4: Generate Load
+
+Run a load generator in a separate pod:
+
+```bash
+kubectl run load-generator \
+  --image=busybox:1.36 \
+  --restart=Never \
+  -n lab02-$STUDENT_NAME \
+  -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://php-apache; done"
+```
+
+Verify the load generator is running:
+
+```bash
+kubectl get pod load-generator -n lab02-$STUDENT_NAME
+kubectl logs load-generator -n lab02-$STUDENT_NAME --tail=5
+```
+
+> ✅ **Checkpoint:** The pod should be in `Running` state and logs should show the php-apache response (`OK!`).
+
+> ⚠️ **Important:** Open a **second terminal** for the next step. Keep the load generator running.
+
+---
+
+## Step 5: Observe Horizontal Scaling
+
+In your **second terminal**, watch the HPA and pods respond:
+
+```bash
+# Set your student name in the new terminal
+export STUDENT_NAME=<usernumber>
+
+# Watch HPA status (updates every 15 seconds)
+kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
+
+# In another terminal, watch pods scale up
+kubectl get pods -n lab02-$STUDENT_NAME --watch
+```
+
+> ✅ **Checkpoint:** Within 1-3 minutes, TARGETS should increase above 50% and REPLICAS should scale up (up to 10). Check HPA events with `kubectl describe hpa php-apache -n lab02-$STUDENT_NAME`.
+
+---
+
+## Step 6: Stop Load and Observe Scale-Down
+
+```bash
+kubectl delete pod load-generator -n lab02-$STUDENT_NAME
+
+# Watch the HPA scale down (~5 minutes)
+kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
+```
+
+> ✅ **Checkpoint:** After approximately 5 minutes, REPLICAS should decrease back to 1. The default stabilization window is 5 minutes to prevent thrashing.
+
+---
+
+## Step 7: HPA with Custom Metrics (v2 API)
+
+```bash
+kubectl delete hpa php-apache -n lab02-$STUDENT_NAME
+```
+
+<!-- Creates HPA v2 with CPU and memory metrics plus custom scaling behavior -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < lab-writer-pod.yaml | kubectl apply -f -
-kubectl get pod data-writer -n lab03-$STUDENT_NAME -w
+envsubst '$STUDENT_NAME' < hpa-v2.yaml | kubectl apply -f -
+kubectl describe hpa php-apache-v2 -n lab02-$STUDENT_NAME
 ```
 
-Verify the volume is bound and data was written:
-
-```bash
-kubectl get pvc -n lab03-$STUDENT_NAME
-kubectl exec data-writer -n lab03-$STUDENT_NAME -- cat /data/testfile.txt
-```
-
-> ✅ **Checkpoint:** PVC status should be `Bound` and the file should contain your timestamp.
-
-Examine the dynamically created PV:
-
-```bash
-PV_NAME=$(kubectl get pvc lab-data-pvc -n lab03-$STUDENT_NAME \
-  -o jsonpath='{.spec.volumeName}')
-kubectl describe pv $PV_NAME
-```
-
-> ✅ **Checkpoint:** Note the PV is bound to a specific AWS availability zone via Node Affinity.
+> ✅ **Checkpoint:** The HPA should show two metrics targets: `cpu: <current>/50%` and `memory: <current>/80%`.
 
 ---
 
-## Step 4: Verify Data Persistence
-
-Delete the pod, create a reader pod, and verify data survives:
+## Step 8: Vertical Pod Autoscaler (VPA)
 
 ```bash
-kubectl delete pod data-writer -n lab03-$STUDENT_NAME
-kubectl get pvc -n lab03-$STUDENT_NAME
+# Check for VPA CRDs
+kubectl get crd | grep verticalpodautoscaler
 ```
 
-<!-- Creates a data-reader pod that reads from the same PVC -->
+> 📝 **Note:** VPA is optional. If the CRDs are not installed, review the manifest below but skip the apply step.
+
+<!-- Creates a VPA in Off mode (recommendation only) for php-apache -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < lab-reader-pod.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/data-reader -n lab03-$STUDENT_NAME --timeout=120s
-kubectl logs data-reader -n lab03-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < vpa.yaml | kubectl apply -f -
+kubectl describe vpa php-apache-vpa -n lab02-$STUDENT_NAME
 ```
 
-> ✅ **Checkpoint:** The original timestamp from `data-writer` should appear, proving data persists across pod deletion.
+> ✅ **Checkpoint:** The VPA status should show recommendation levels: **lowerBound**, **target**, and **upperBound**.
+
+> ⚠️ Do not use VPA in `Auto` mode with HPA on the same CPU/memory metrics — they will conflict.
 
 ---
 
-## Step 5: Deploy a StatefulSet
+## Step 9: Cluster Autoscaler Behavior
 
-Create the headless Service and StatefulSet:
+> ⚠️ **Instructor Demo:** In a shared cluster, only run this step when directed by the instructor.
 
-<!-- Creates a headless Service for StatefulSet DNS -->
-<!-- Creates a 3-replica StatefulSet with per-pod PVCs -->
-Apply the manifests:
+<!-- Creates an inflate Deployment with 5 replicas to pressure cluster capacity -->
+Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < lab-headless-svc.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < lab-statefulset.yaml | kubectl apply -f -
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+envsubst '$STUDENT_NAME' < inflate-deployment.yaml | kubectl apply -f -
+
+# Watch pods - some should be Pending if cluster is at capacity
+kubectl get pods -n lab02-$STUDENT_NAME -l app=inflate --watch
 ```
 
-> ✅ **Checkpoint:** Pods are created sequentially: `web-0` must be Running before `web-1` starts. Press `Ctrl+C` once all three are Running.
+> ✅ **Checkpoint:** Some pods will show `Pending` with `FailedScheduling: insufficient cpu`. If Cluster Autoscaler is active, new nodes may join within 2-5 minutes.
 
 ---
 
-## Step 6: Verify Stable Identities
+## Part 2: Scheduling and Placement
 
-```bash
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -o wide
-kubectl get pvc -n lab03-$STUDENT_NAME
-
-# Test DNS resolution for a StatefulSet pod
-kubectl run dns-test --image=busybox:1.36 -n lab03-$STUDENT_NAME --rm -it \
-  --restart=Never -- nslookup web-0.web-headless.lab03-$STUDENT_NAME.svc.cluster.local
-```
-
-> ✅ **Checkpoint:** Each pod has a predictable name (`web-0`, `web-1`, `web-2`) and its own PVC (`web-data-web-0`, etc.). DNS resolves each pod individually.
-
----
-
-## Step 7: Test Data Persistence Per Replica
-
-Write unique content to each pod's volume:
-
-```bash
-kubectl exec web-0 -n lab03-$STUDENT_NAME -- \
-  sh -c 'echo "Hello from web-0" > /usr/share/nginx/html/index.html'
-kubectl exec web-1 -n lab03-$STUDENT_NAME -- \
-  sh -c 'echo "Hello from web-1" > /usr/share/nginx/html/index.html'
-kubectl exec web-2 -n lab03-$STUDENT_NAME -- \
-  sh -c 'echo "Hello from web-2" > /usr/share/nginx/html/index.html'
-
-for i in 0 1 2; do
-    echo "--- web-$i ---"
-    kubectl exec web-$i -n lab03-$STUDENT_NAME -- curl -s localhost
-done
-```
-
-Delete a pod and verify its data survives:
-
-```bash
-kubectl delete pod web-1 -n lab03-$STUDENT_NAME
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
-
-# Once web-1 is Running again:
-kubectl exec web-1 -n lab03-$STUDENT_NAME -- curl -s localhost
-```
-
-> ✅ **Checkpoint:** The recreated `web-1` still serves "Hello from web-1" because it reattached to the same PVC.
-
----
-
-## Step 8: Scale the StatefulSet
-
-```bash
-# Scale up to 5 replicas (ordered creation)
-kubectl scale statefulset web -n lab03-$STUDENT_NAME --replicas=5
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
-
-# Verify new PVCs
-kubectl get pvc -n lab03-$STUDENT_NAME
-
-# Scale down to 2 replicas (reverse order termination)
-kubectl scale statefulset web -n lab03-$STUDENT_NAME --replicas=2
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
-
-# PVCs persist after scale-down
-kubectl get pvc -n lab03-$STUDENT_NAME
-```
-
-> ⚠️ **Important:** PVCs are **not** deleted when a StatefulSet scales down. This protects data and allows reattachment on scale-up.
-
----
-
----
-
-## Optional Stretch Goals
-
-> These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
-
-### Step 9: Test Volume Expansion
-
-```bash
-kubectl get storageclass gp2 -o jsonpath='{.allowVolumeExpansion}'
-
-# gp2 does not allow expansion by default — enable it first
-# (cluster-wide setting; safe to run even if a classmate already did)
-kubectl patch storageclass gp2 -p '{"allowVolumeExpansion": true}'
-
-# Expand the PVC for web-0 from 1Gi to 2Gi
-kubectl patch pvc web-data-web-0 -n lab03-$STUDENT_NAME \
-  -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
-
-kubectl get pvc web-data-web-0 -n lab03-$STUDENT_NAME -w
-```
-
-> ⚠️ Volume expansion is a one-way operation -- you cannot shrink a PVC after expanding it.
+Continue with **[Lab 4: Scheduling and Placement](../lab-04/README.md)** — node affinity, pod affinity/anti-affinity, taints & tolerations, topology spread, and DaemonSets. It uses its own `sched-$STUDENT_NAME` namespace, so you can run it before or after the cleanup below.
 
 ---
 
@@ -235,21 +212,20 @@ kubectl get pvc web-data-web-0 -n lab03-$STUDENT_NAME -w
 
 ```bash
 kubectl config set-context --current --namespace=default
-kubectl delete statefulset web -n lab03-$STUDENT_NAME
-kubectl delete pvc --all -n lab03-$STUDENT_NAME
-kubectl delete namespace lab03-$STUDENT_NAME
+kubectl delete namespace lab02-$STUDENT_NAME
 ```
 
 ---
 
 ## Summary
 
-- `WaitForFirstConsumer` ensures EBS volumes are created in the correct availability zone
-- PVCs persist independently of pods -- data survives pod deletion and rescheduling
-- StatefulSets provide stable network identity, ordered operations, and per-replica storage
-- PVCs are retained on scale-down to protect data
-- Volume expansion is supported but is a one-way operation
+- HPA scales pod count based on CPU, memory, or custom metrics
+- Resource requests are mandatory for HPA to function
+- The v2 API provides fine-grained control over scaling behavior
+- VPA right-sizes resource requests; use Off mode to gather data first
+- Cluster Autoscaler adds nodes when pods cannot be scheduled
+- All three autoscalers work at different layers and complement each other
 
 ---
 
-*Lab 3 Complete — Up Next: Lab 4 — Services and Service Discovery*
+*Lab 3 Complete — Up Next: Lab 4 — Scheduling and Placement*

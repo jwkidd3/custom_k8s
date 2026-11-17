@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RBAC &amp; Security | Intermediate Kubernetes</title>
+    <title>Scaling Your Applications | Intermediate Kubernetes</title>
     <style>/* reveal.min.css (vendored, reveal.js 4.3.1) */
 /*!
 * reveal.js 4.3.1
@@ -76,16 +76,12 @@
     <div class="reveal">
         <div class="slides">
 
-            <!-- Slide 1: Title -->
+            <!-- Title Slide -->
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="title-slide">
-                <h1>&#128272; RBAC &amp; Security</h1>
-                <h2>Controlling Access and Hardening Your Cluster</h2>
-                <h3>Enterprise EKS Platform &mdash; Module 7 of 13</h3>
-                                <div class="module-progress">
-                    <div class="step completed"></div>
-                    <div class="step completed"></div>
-                    <div class="step completed"></div>
-                    <div class="step completed"></div>
+                <h1>&#128200; Scaling Your Applications</h1>
+                <h2>AutoScalers &amp; Metrics</h2>
+                <h3>Intermediate Kubernetes &mdash; Module 3 of 18</h3>
+                <div class="module-progress">
                     <div class="step completed"></div>
                     <div class="step completed"></div>
                     <div class="step active"></div>
@@ -95,539 +91,588 @@
                     <div class="step"></div>
                     <div class="step"></div>
                     <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
                 </div>
-                <aside class="notes">Module 7 covers Kubernetes RBAC, ServiceAccounts, security contexts, and Pod Security Standards. Security is a fundamental part of operating workloads on Kubernetes.</aside>
+                <aside class="notes">This module covers automatic scaling: resource requests/limits, HPA, VPA, and KEDA.</aside>
             </section>
 
-            <!-- Slide 2: Agenda -->
+            <!-- Objectives -->
             <section>
-                <h2>&#128203; Module Agenda</h2>
+                <h2>&#127919; Module Objectives</h2>
                 <ul>
-                    <li>Kubernetes security model — authentication, authorization, admission</li>
-                    <li>RBAC deep dive — Roles, ClusterRoles, Bindings</li>
-                    <li>ServiceAccounts and pod identity</li>
-                    <li>Security contexts at pod and container level</li>
-                    <li>Pod Security Standards and admission controllers</li>
-                    <li>Security best practices</li>
+                    <li>Understand why resource requests and limits are the foundation of scaling</li>
+                    <li>Explain how the Metrics Server collects and serves resource data</li>
+                    <li>Configure Horizontal Pod Autoscaler (HPA) with the <code>autoscaling/v2</code> API</li>
+                    <li>Calculate expected scaling using the HPA algorithm</li>
+                    <li>Tune scaling behavior with stabilization windows and policies</li>
+                    <li>Understand VPA and Cluster Autoscaler, and when KEDA is appropriate</li>
+                    <li>Monitor scaling with <code>kubectl top</code> and Prometheus</li>
                 </ul>
-                <aside class="notes">We'll work through the security model layer by layer — identities, permissions, and workload constraints. Each section builds on the previous one.</aside>
+                <aside class="notes">HPA is the core of this module. VPA and KEDA are conceptual overviews.</aside>
             </section>
 
-            <!-- Slide 3: Section Divider — Kubernetes Security Model -->
+            <!-- Section Divider: Why Scaling -->
             <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#128737;&#65039; Kubernetes Security Model</h2>
-                <h3>Authentication, authorization, and admission control</h3>
-                <aside class="notes">Every API request passes through three gates: authentication, authorization, and admission control.</aside>
+                <h2>&#129300; Why Scaling Matters</h2>
+                <h3>The cost of getting it wrong</h3>
+                <aside class="notes">Why automatic scaling matters.</aside>
             </section>
 
-            <!-- Slide 4: The Three Gates -->
+            <!-- Why Scaling Matters -->
             <section>
-                <h2>&#128682; API Request Flow — Three Security Gates</h2>
-                <div class="concept-box">
-                    <h4>Every request to the API server passes through:</h4>
-                </div>
-                <div class="three-columns">
-                    <div class="card">
-                        <h4>1. Authentication</h4>
-                        <ul>
-                            <li>Who are you? Validates identity</li>
-                            <li>Returns user/group info</li>
-                        </ul>
-                    </div>
-                    <div class="card">
-                        <h4>2. Authorization</h4>
-                        <ul>
-                            <li>What can you do?</li>
-                            <li>RBAC evaluates; allow or deny</li>
-                        </ul>
-                    </div>
-                    <div class="card">
-                        <h4>3. Admission</h4>
-                        <ul>
-                            <li>Should this be allowed?</li>
-                            <li>Mutating + validating webhooks</li>
-                        </ul>
-                    </div>
-                </div>
-                <aside class="notes">Authentication verifies identity. Authorization checks RBAC policies. Admission controllers can modify or reject requests even after authorization — e.g., enforcing security policies or injecting sidecars.</aside>
-            </section>
-
-            <!-- Slide 5: Authentication Methods -->
-            <section>
-                <h2>&#128100; Authentication Methods</h2>
+                <h2>&#9889; The Scaling Challenge</h2>
                 <div class="two-columns">
-                    <div>
-                        <div class="card">
-                            <h4>X.509 Client Certificates</h4>
-                            <ul>
-                                <li>CN = username, O = group; used by cluster components</li>
-                            </ul>
-                        </div>
-                        <div class="card" style="margin-top: 15px;">
-                            <h4>Bearer Tokens</h4>
-                            <ul>
-                                <li>ServiceAccount tokens (JWT) and bootstrap tokens</li>
-                            </ul>
-                        </div>
+                    <div class="card">
+                        <h4>&#128308; Over-provisioned</h4>
+                        <ul>
+                            <li>Wasted compute and higher cloud costs</li>
+                            <li>Resources unavailable to other teams</li>
+                            <li>Quota exhaustion on the cluster</li>
+                        </ul>
                     </div>
-                    <div>
-                        <div class="card">
-                            <h4>OpenID Connect (OIDC)</h4>
-                            <ul>
-                                <li>Enterprise SSO via Azure AD, Okta, Dex</li>
-                            </ul>
-                        </div>
-                        <div class="card" style="margin-top: 15px;">
-                            <h4>AWS IAM Authenticator (EKS)</h4>
-                            <ul>
-                                <li>Maps IAM roles to K8s users via aws-auth ConfigMap</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-                <aside class="notes">Kubernetes delegates authentication to external systems. In EKS, the AWS IAM Authenticator maps IAM roles/users to K8s identities via the aws-auth ConfigMap. OIDC is common for human users.</aside>
-            </section>
-
-            <!-- Slide 6: Section Divider — RBAC Deep Dive -->
-            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#128274; RBAC Deep Dive</h2>
-                <h3>Role-Based Access Control in Kubernetes</h3>
-                <aside class="notes">RBAC is the standard authorization mode in Kubernetes. It lets you define fine-grained permissions using four API objects. Let's break each one down with real examples.</aside>
-            </section>
-
-            <!-- Slide 7: RBAC API Objects Overview -->
-            <section>
-                <h2>&#128230; RBAC API Objects</h2>
-                <div class="two-columns">
-                    <div>
-                        <div class="concept-box">
-                            <h4>Define Permissions</h4>
-                            <ul>
-                                <li><strong>Role</strong> — namespace-scoped permissions</li>
-                                <li><strong>ClusterRole</strong> — cluster-wide permissions</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="concept-box">
-                            <h4>Grant Permissions</h4>
-                            <ul>
-                                <li><strong>RoleBinding</strong> — binds Role/ClusterRole to subjects in a namespace</li>
-                                <li><strong>ClusterRoleBinding</strong> — binds ClusterRole to subjects cluster-wide</li>
-                            </ul>
-                        </div>
+                    <div class="card">
+                        <h4>&#128308; Under-provisioned</h4>
+                        <ul>
+                            <li>Degraded response times and timeouts</li>
+                            <li>OOMKilled pods</li>
+                            <li>Customer-facing impact</li>
+                        </ul>
                     </div>
                 </div>
                 <div class="key-point">
-                    <strong>Key insight:</strong> Roles define <em>what</em> is allowed. Bindings define <em>who</em> gets those permissions. You always need both.
+                    <strong>The goal:</strong> Right-size automatically based on real demand, not guesswork.
                 </div>
-                <aside class="notes">The separation allows reuse — a single ClusterRole can be bound to different users in different namespaces via multiple RoleBindings.</aside>
+                <aside class="notes">Over-provisioning wastes money. Under-provisioning causes outages. Autoscaling finds the balance.</aside>
             </section>
 
-            <!-- Slide 10: RoleBinding vs ClusterRoleBinding -->
-            <section>
-                <h2>RoleBinding vs ClusterRoleBinding</h2>
-                <div class="key-point">
-                    <strong>Subjects</strong> can be Users, Groups, or ServiceAccounts. <strong>roleRef</strong> can point to a Role or ClusterRole. ClusterRoleBindings grant permissions across ALL namespaces -- use sparingly.
-                </div>
-                <aside class="notes">A RoleBinding can reference a ClusterRole — granting its permissions only within the RoleBinding's namespace. Define once, reuse across namespaces. A ClusterRoleBinding to cluster-admin gives full cluster access.</aside>
+            <!-- Section Divider: Resource Foundation -->
+            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
+                <h2>&#128176; Resource Requests &amp; Limits</h2>
+                <h3>The foundation everything else depends on</h3>
+                <aside class="notes">Resource requests and limits are the foundation for scheduling and autoscaling.</aside>
             </section>
 
-            <!-- Slide 12: Verbs and Resources Matrix -->
+            <!-- Requests vs Limits -->
             <section>
-                <h2>&#128200; Verbs and Resources Matrix</h2>
-                <table>
+                <h2>&#128176; Requests vs. Limits</h2>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>Requests (Guaranteed)</h4>
+                        <ul>
+                            <li>What the scheduler uses for placement</li>
+                            <li>Guaranteed minimum resources</li>
+                            <li>Used by HPA for percentage calculations</li>
+                            <li><strong>Must</strong> be set for HPA to work</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>Limits (Maximum)</h4>
+                        <ul>
+                            <li>Enforced ceiling the container cannot exceed</li>
+                            <li>CPU: throttled when exceeded</li>
+                            <li>Memory: OOMKilled when exceeded</li>
+                            <li>Protects neighbors on the same node</li>
+                        </ul>
+                    </div>
+                </div>
+                <aside class="notes">Requests are scheduling guarantees. Limits are runtime enforcement. CPU is throttled; memory exceeding limits triggers OOMKill.</aside>
+            </section>
+
+            <!-- Resource Units -->
+            <section>
+                <h2>&#128290; Understanding Resource Units</h2>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>CPU Units</h4>
+                        <table>
+                            <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>1</code></td><td>1 vCPU / 1 core</td></tr>
+                                <tr><td><code>500m</code></td><td>Half a core (500 millicores)</td></tr>
+                                <tr><td><code>250m</code></td><td>Quarter core</td></tr>
+                                <tr><td><code>100m</code></td><td>1/10th of a core</td></tr>
+                            </tbody>
+                        </table>
+                        <p style="font-size: 0.8em;"><em>1000m = 1 CPU. Always compressible.</em></p>
+                    </div>
+                    <div class="card">
+                        <h4>Memory Units</h4>
+                        <table>
+                            <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>128Mi</code></td><td>128 mebibytes (2^20)</td></tr>
+                                <tr><td><code>256Mi</code></td><td>256 MiB</td></tr>
+                                <tr><td><code>1Gi</code></td><td>1 gibibyte (2^30)</td></tr>
+                                <tr><td><code>512M</code></td><td>512 megabytes (10^6)</td></tr>
+                            </tbody>
+                        </table>
+                        <p style="font-size: 0.8em;"><em>Use <code>Mi</code>/<code>Gi</code> (binary). Not compressible.</em></p>
+                    </div>
+                </div>
+                <aside class="notes">Common pitfall: 128M (megabytes) != 128Mi (mebibytes). Always use Mi/Gi.</aside>
+            </section>
+
+            <!-- QoS Classes -->
+            <section>
+                <h2>&#127919; Quality of Service (QoS) Classes</h2>
+                <p>Kubernetes assigns a <strong>QoS class</strong> based on resource configuration. Under memory pressure, the kubelet evicts lower-priority QoS classes first.</p>
+                <table style="font-size: 0.85em;">
                     <thead>
                         <tr>
-                            <th>Verb</th>
-                            <th>HTTP Method</th>
-                            <th>Description</th>
+                            <th>QoS Class</th>
+                            <th>Criteria</th>
+                            <th>Eviction Priority</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td><code>get</code></td>
-                            <td>GET (single)</td>
-                            <td>Retrieve a specific resource</td>
+                            <td><strong>Guaranteed</strong></td>
+                            <td>requests == limits for all containers</td>
+                            <td>Last to be evicted</td>
                         </tr>
                         <tr>
-                            <td><code>list</code></td>
-                            <td>GET (collection)</td>
-                            <td>List resources</td>
+                            <td><strong>Burstable</strong></td>
+                            <td>requests &lt; limits (or only requests set)</td>
+                            <td>Evicted after BestEffort</td>
                         </tr>
                         <tr>
-                            <td><code>watch</code></td>
-                            <td>GET (watch)</td>
-                            <td>Stream changes to resources</td>
-                        </tr>
-                        <tr>
-                            <td><code>create</code></td>
-                            <td>POST</td>
-                            <td>Create a new resource</td>
-                        </tr>
-                        <tr>
-                            <td><code>update</code></td>
-                            <td>PUT</td>
-                            <td>Replace entire resource</td>
-                        </tr>
-                        <tr>
-                            <td><code>patch</code></td>
-                            <td>PATCH</td>
-                            <td>Modify part of a resource</td>
-                        </tr>
-                        <tr>
-                            <td><code>delete</code></td>
-                            <td>DELETE</td>
-                            <td>Remove a resource</td>
+                            <td><strong>BestEffort</strong></td>
+                            <td>No requests or limits set</td>
+                            <td>First to be evicted</td>
                         </tr>
                     </tbody>
                 </table>
-                <div class="highlight-box">
-                    <strong>Wildcard:</strong> Use <code>"*"</code> for all verbs or all resources — avoid this outside of testing.
-                </div>
-                <aside class="notes">Each RBAC verb maps to an HTTP method. Be specific — a common mistake is granting all verbs when only get/list are needed.</aside>
+                <aside class="notes">Eviction order: BestEffort first, then Burstable, then Guaranteed. Check with: kubectl get pod NAME -o jsonpath='{.status.qosClass}'</aside>
             </section>
 
-            <!-- Slide 13: Aggregated ClusterRoles -->
-            <section>
-                <h2>&#128736;&#65039; Aggregated ClusterRoles</h2>
-                <div class="concept-box">
-                    <h4>How it works</h4>
-                    <p>The controller manager automatically combines rules from all ClusterRoles matching the label selector. Built-in roles like <code>admin</code>, <code>edit</code>, and <code>view</code> use aggregation.</p>
-                </div>
-                <aside class="notes">When you install a CRD, add a ClusterRole with the appropriate label and it auto-merges into admin/edit/view roles — no need to modify built-in roles.</aside>
-            </section>
-
-            <!-- Slide 14: Section Divider — ServiceAccounts -->
+            <!-- Section Divider: Metrics Server -->
             <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#129520; ServiceAccounts</h2>
-                <h3>Identity for workloads running in the cluster</h3>
-                <aside class="notes">Users authenticate externally; pods authenticate using ServiceAccounts. These define what workloads can do within the cluster and with external services.</aside>
+                <h2>&#128202; Metrics Server</h2>
+                <h3>The data pipeline for autoscaling</h3>
+                <aside class="notes">The Metrics Server provides the data HPA needs for scaling decisions.</aside>
             </section>
 
-            <!-- Slide 15: ServiceAccount Anatomy -->
+            <!-- Metrics Server Architecture -->
             <section>
-                <h2>&#128301; ServiceAccount Anatomy</h2>
-                <div class="card">
-                    <h4>Key Properties</h4>
-                    <ul>
-                        <li>Namespace-scoped identity</li>
-                        <li>Every namespace has a <code>default</code> SA</li>
-                        <li>Tokens are projected as volumes</li>
-                        <li>Annotations enable cloud integrations</li>
-                        <li>Can disable auto-mount for security</li>
-                    </ul>
+                <h2>&#128202; Metrics Server Architecture</h2>
+                <div class="concept-box">
+                    <h4>How metrics flow through the system</h4>
+                    <ol>
+                        <li><strong>kubelet</strong> collects resource usage from the container runtime (containerd)</li>
+                        <li><strong>Metrics Server</strong> scrapes kubelet's <code>/metrics/resource</code> endpoint on a short, configurable interval (15s by default)</li>
+                        <li><strong>Metrics Server</strong> aggregates and serves data via the <code>metrics.k8s.io</code> API</li>
+                        <li><strong>HPA controller</strong> queries <code>metrics.k8s.io</code> every 15 seconds (default)</li>
+                        <li><strong>HPA controller</strong> calculates desired replicas and patches the Deployment</li>
+                    </ol>
                 </div>
-                <aside class="notes">Every pod runs as a ServiceAccount — default SA if unspecified. Create dedicated SAs per application and disable auto-mounting when API access isn't needed. The EKS annotation enables IRSA.</aside>
+                <aside class="notes">Metrics Server is a prerequisite for HPA. It's an in-memory store (latest metrics only) — use Prometheus for historical data. The 15-second scrape interval adds lag to scaling decisions.</aside>
             </section>
 
-            <!-- Slide 17: Binding Roles to ServiceAccounts -->
+            <!-- Section Divider: HPA -->
+            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
+                <h2>&#9889; Horizontal Pod Autoscaler</h2>
+                <h3>The core scaling mechanism</h3>
+                <aside class="notes">HPA is the primary autoscaling mechanism. We'll cover the algorithm, API, and tuning.</aside>
+            </section>
+
+            <!-- HPA Algorithm -->
             <section>
-                <h2>&#128279; Binding Roles to ServiceAccounts</h2>
+                <h2>&#129518; The HPA Algorithm</h2>
+                <div class="concept-box">
+                    <h4>Core Formula</h4>
+                    <p style="font-size: 1.2em; text-align: center; font-family: monospace;">
+                        desiredReplicas = ⌈ currentReplicas &times; ( currentMetric / desiredMetric ) ⌉
+                    </p>
+                </div>
+                <div>
+                    <h4>Example Calculation</h4>
+                    <table>
+                        <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+                        <tbody>
+                            <tr><td>Current replicas</td><td>3</td></tr>
+                            <tr><td>CPU request per pod</td><td>250m</td></tr>
+                            <tr><td>Current average CPU usage</td><td>200m per pod (80%)</td></tr>
+                            <tr><td>Target CPU utilization</td><td>50%</td></tr>
+                            <tr><td><strong>Calculation</strong></td><td>⌈ 3 × (80 / 50) ⌉ = ⌈ 4.8 ⌉ = <strong>5 replicas</strong></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <aside class="notes">HPA uses the ratio of current to desired metric values against requests (not limits). Always rounds up.</aside>
+            </section>
+
+            <!-- HPA Algorithm Details -->
+            <section>
+                <h2>&#128290; HPA Algorithm — Edge Cases</h2>
+                <ul>
+                    <li><strong>Tolerance zone (±10%):</strong> HPA won't scale if the ratio is within 0.9–1.1 of the target. This prevents flapping.</li>
+                    <li><strong>Missing metrics:</strong> Pods with missing metrics are treated conservatively — scale-down assumes 100% utilization, scale-up assumes 0%.</li>
+                    <li><strong>Unready pods:</strong> Excluded from the metric average during scale-up (included for scale-down).</li>
+                    <li><strong>Multiple metrics:</strong> HPA evaluates each metric independently and takes the <em>maximum</em> desired replica count.</li>
+                </ul>
                 <div class="key-point">
-                    <strong>Pattern:</strong> Create a dedicated ServiceAccount per application, grant only the permissions it needs, and reference it in the pod spec with <code>serviceAccountName</code>.
+                    <strong>The 10% tolerance band</strong> is critical for stability. If your target is 50% CPU and current usage is between 45%–55%, the HPA takes no action. This prevents constant scaling oscillation.
                 </div>
-                <aside class="notes">The SA subject includes a namespace field, important for cross-namespace bindings. Never grant permissions to the default ServiceAccount.</aside>
+                <aside class="notes">These edge cases make HPA stable. The tolerance zone prevents flapping. Conservative handling of missing metrics prevents inappropriate scale-down. Key details for troubleshooting.</aside>
             </section>
 
-            <!-- Slide 18: Pod Identity on EKS (brief) -->
+            <!-- Stabilization Windows Explained -->
             <section>
-                <h2>&#9729;&#65039; Pod Identity on EKS</h2>
+                <h2>&#128338; Stabilization Windows Explained</h2>
                 <div class="concept-box">
-                    <h4>Give a pod its own scoped AWS identity</h4>
-                    <ul>
-                        <li>Bind an IAM role to a pod's <strong>ServiceAccount</strong> &mdash; no shared node-level credentials</li>
-                        <li><strong>IRSA</strong> does this via OIDC federation; <strong>EKS Pod Identity</strong> is the newer, simpler alternative</li>
-                        <li>Result: fine-grained, per-pod least privilege for AWS API access</li>
-                    </ul>
+                    <h4>How Stabilization Works</h4>
+                    <p>The HPA examines all computed replica counts within the window and selects the highest.</p>
                 </div>
-                <div class="key-point"><strong>Concept only</strong> &mdash; the AWS-specific wiring (OIDC provider, trust policy) is beyond this course's scope.</div>
-                <aside class="notes">Pod-level AWS identity: each pod gets its own scoped IAM role instead of sharing the node's. IRSA (OIDC-based) and the newer EKS Pod Identity both achieve this. Covered conceptually only — the hands-on AWS setup is out of scope for the lab.</aside>
-            </section>
-
-            <!-- Slide 19: Section Divider — Security Context -->
-            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#128737;&#65039; Security Context</h2>
-                <h3>Constraining what pods and containers can do</h3>
-                <aside class="notes">RBAC controls API access. Security contexts control OS-level behavior — user, Linux capabilities, and privilege escalation.</aside>
-            </section>
-
-            <!-- Slide 20: Pod SecurityContext -->
-            <section>
-                <h2>&#128451;&#65039; Pod SecurityContext</h2>
                 <div class="two-columns">
-                    <div class="highlight-box">
-                        <strong>runAsUser/runAsGroup:</strong> Sets the UID/GID for all containers in the pod
+                    <div class="card">
+                        <h4>Scale-Up Window</h4>
+                        <ul>
+                            <li>Default: <strong>0 seconds</strong> (immediate)</li>
+                            <li>Selects <em>highest</em> recommendation in window</li>
+                            <li>Set higher to smooth transient spikes</li>
+                        </ul>
                     </div>
-                    <div class="highlight-box">
-                        <strong>fsGroup:</strong> Sets the group ownership of all mounted volumes
+                    <div class="card">
+                        <h4>Scale-Down Window</h4>
+                        <ul>
+                            <li>Default: <strong>300 seconds</strong> (5 min)</li>
+                            <li>Selects <em>highest</em> recommendation in window</li>
+                            <li>Increase for slow-ramp-down workloads</li>
+                        </ul>
                     </div>
                 </div>
-                <aside class="notes">Pod-level security context applies to all containers. runAsNonRoot prevents running as root even if the Dockerfile specifies it. The seccomp profile restricts system calls.</aside>
+                <aside class="notes">For DNS-related services, consider a longer scale-down window (600s+) due to DNS caching.</aside>
             </section>
 
-            <!-- Slide 21: Container SecurityContext -->
+            <!-- Scaling Timeline -->
             <section>
-                <h2>&#128230; Container SecurityContext</h2>
+                <h2>&#128337;&#65039; Scaling Timeline — What Actually Happens</h2>
                 <div class="concept-box">
-                    <h4>Container-level overrides pod-level settings</h4>
-                    <div class="two-columns">
-                        <div>
-                            <ul>
-                                <li><strong>allowPrivilegeEscalation:</strong> Prevents gaining more privileges than parent</li>
-                                <li><strong>readOnlyRootFilesystem:</strong> Prevents writes to container filesystem</li>
-                            </ul>
-                        </div>
-                        <div>
-                            <ul>
-                                <li><strong>capabilities:</strong> Fine-grained Linux capability control</li>
-                                <li><strong>privileged:</strong> Never set to <code>true</code> for application workloads</li>
-                            </ul>
-                        </div>
-                    </div>
+                    <h4>From spike to scaled (typical timeline)</h4>
                 </div>
-                <aside class="notes">Drop ALL capabilities first, then add back only what's needed. readOnlyRootFilesystem forces writes to mounted volumes only — use emptyDir for temp files.</aside>
+                <table>
+                    <thead>
+                        <tr><th>Time</th><th>Event</th><th>Detail</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>T+0s</td><td>Traffic spike begins</td><td>CPU usage increases on existing pods</td></tr>
+                        <tr><td>T+15s</td><td>Metrics Server scrapes</td><td>New metrics collected from kubelets</td></tr>
+                        <tr><td>T+30s</td><td>HPA evaluates</td><td>Reads new metrics, calculates desired replicas</td></tr>
+                        <tr><td>T+31s</td><td>HPA patches Deployment</td><td>Sets new replica count</td></tr>
+                        <tr><td>T+32s</td><td>Scheduler assigns node</td><td>Pod scheduled to a node with capacity</td></tr>
+                        <tr><td>T+35s</td><td>Image pull (if cached)</td><td>Container runtime pulls/uses cached image</td></tr>
+                        <tr><td>T+40s</td><td>Container starts</td><td>Application begins initialization</td></tr>
+                        <tr><td>T+55s</td><td>Readiness probe passes</td><td>Pod added to Service endpoints</td></tr>
+                        <tr><td>T+55s</td><td><strong>Traffic served</strong></td><td>New pod handling requests</td></tr>
+                    </tbody>
+                </table>
+                <aside class="notes">~55 seconds best case. Longer if image isn't cached or startup is slow. For latency-sensitive services, use lower target utilization to absorb spikes during this lag.</aside>
             </section>
 
-            <!-- Slide 22: Building Secure Container Images -->
-            <section>
-                <h2>&#128230; Building Secure Container Images</h2>
-                <div class="card">
-                    <h4>Minimal Images</h4>
-                    <ul>
-                        <li><strong>Multi-stage builds</strong> — compile in one stage, copy only the binary to the final image</li>
-                        <li><strong>Distroless</strong> — Google's images with no shell or package manager</li>
-                        <li><strong>Alpine</strong> — ~5 MB base; good for interpreted languages</li>
-                        <li><strong>scratch</strong> — empty base for statically linked Go / Rust binaries</li>
-                    </ul>
-                </div>
-                <div class="highlight-box" style="margin-top:10px;">
-                    <strong>Result:</strong> A distroless multi-stage build yields a ~15 MB final image with no shell, no root, no package manager
-                </div>
-                <aside class="notes">Minimize attack surface: fewer binaries means fewer CVEs. Multi-stage builds keep final images lean. The distroless nonroot tag pairs well with the runAsNonRoot security context. Smaller images also speed up node scaling.</aside>
+            <!-- Section Divider: VPA -->
+            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
+                <h2>&#128200; Vertical Pod Autoscaler</h2>
+                <h3>Right-sizing pod resources</h3>
+                <aside class="notes">VPA scales resources per pod, complementing HPA's replica scaling.</aside>
             </section>
 
-            <!-- Slide 23: Image Scanning, Signing, and Secrets -->
+            <!-- VPA Overview -->
             <section>
-                <h2>&#128270; Image Security Pipeline</h2>
-                <div class="three-columns" style="font-size: 0.85em;">
-                    <div class="card">
-                        <h4>&#128737;&#65039; Run as Non-Root</h4>
-                        <ul>
-                            <li>Add <code>USER</code> in Dockerfile</li>
-                            <li>Pair with <code>runAsNonRoot: true</code></li>
-                            <li>Never store secrets in layers</li>
-                        </ul>
-                    </div>
-                    <div class="card">
-                        <h4>&#128269; Image Scanning</h4>
-                        <ul>
-                            <li><strong>Trivy</strong> — CI-friendly scanner</li>
-                            <li><strong>ECR scanning</strong> — on push or continuous</li>
-                            <li>Scan in CI <em>and</em> in registry</li>
-                        </ul>
-                    </div>
-                    <div class="card">
-                        <h4>&#9999;&#65039; Image Signing</h4>
-                        <ul>
-                            <li><strong>Cosign</strong> — keyless OIDC signing</li>
-                            <li>Verify at admission</li>
-                            <li>Pin by <code>@sha256:</code> digest</li>
-                        </ul>
-                    </div>
+                <h2>&#128200; VPA — Vertical Pod Autoscaler</h2>
+                <div class="concept-box">
+                    <h4>What VPA does</h4>
+                    <p>VPA automatically adjusts CPU and memory <strong>requests and limits</strong> for pods based on observed usage patterns.</p>
                 </div>
-                <p style="margin-top: 15px;"><strong>Supply-chain rule of thumb:</strong> Build minimal &rarr; scan for CVEs &rarr; sign the artifact &rarr; verify at deploy</p>
-                <aside class="notes">Trivy: pass --exit-code 1 to fail builds on HIGH/CRITICAL CVEs. ECR Enhanced Scanning uses Amazon Inspector for continuous monitoring. Cosign with Sigstore signs images without long-lived keys. Remind students that docker history exposes every layer, so secrets in images are extractable.</aside>
-            </section>
-
-            <!-- Slide 24: Pod Security Standards -->
-            <section>
-                <h2>&#128208; Pod Security Standards</h2>
                 <div class="three-columns">
                     <div class="card">
-                        <h4 style="color: var(--danger-color);">Privileged</h4>
-                        <ul>
-                            <li>Unrestricted; all capabilities allowed</li>
-                            <li>For CNI plugins, storage drivers only</li>
-                        </ul>
+                        <h4>Recommender</h4>
+                        <p style="font-size: 0.85em;">Watches resource usage and computes optimal requests/limits</p>
                     </div>
                     <div class="card">
-                        <h4 style="color: var(--warning-color);">Baseline</h4>
-                        <ul>
-                            <li>Prevents known escalations</li>
-                            <li>Good starting point for migration</li>
-                        </ul>
+                        <h4>Updater</h4>
+                        <p style="font-size: 0.85em;">Evicts pods that need resource updates (triggers restart with new values)</p>
                     </div>
                     <div class="card">
-                        <h4 style="color: var(--success-color);">Restricted</h4>
-                        <ul>
-                            <li>Non-root, drop all capabilities</li>
-                            <li>Recommended hardening target</li>
-                        </ul>
+                        <h4>Admission Controller</h4>
+                        <p style="font-size: 0.85em;">Mutates new pods to use recommended resources on creation</p>
                     </div>
                 </div>
-                <div class="key-point">
-                    <strong>Recommendation:</strong> Target <strong>Restricted</strong> for application workloads. Use <strong>Baseline</strong> as a transition step. Reserve <strong>Privileged</strong> for infrastructure components only.
-                </div>
-                <div class="highlight-box">
-                    <strong>Enforcing:</strong> Apply <code>pod-security.kubernetes.io/</code> labels to a namespace — <code>enforce</code> rejects violations, while <code>audit</code> and <code>warn</code> only log them. Migration path: warn &rarr; audit &rarr; enforce.
-                </div>
-                <aside class="notes">Pod Security Standards replace the deprecated PodSecurityPolicy. Most workloads should target Restricted; Baseline is useful during migration. enforce rejects violations; audit/warn logs them without rejecting. Migration path: warn, then audit, then enforce. Built into K8s since 1.25 — namespace labels only, no install needed.</aside>
+                <aside class="notes">VPA requires pod restarts to apply changes — it cannot update resources on a running pod.</aside>
             </section>
 
-            <!-- Slide 24: Section Divider — Security Best Practices -->
+            <!-- VPA Modes -->
+            <section>
+                <h2>&#9881;&#65039; VPA Operating Modes</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mode</th>
+                            <th>Recommends</th>
+                            <th>Applies on Create</th>
+                            <th>Evicts to Update</th>
+                            <th>Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Off</strong></td>
+                            <td>&#9989;</td>
+                            <td>&#10060;</td>
+                            <td>&#10060;</td>
+                            <td>Dry run — observe recommendations</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Initial</strong></td>
+                            <td>&#9989;</td>
+                            <td>&#9989;</td>
+                            <td>&#10060;</td>
+                            <td>Apply on new pods only</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Auto</strong></td>
+                            <td>&#9989;</td>
+                            <td>&#9989;</td>
+                            <td>&#9989;</td>
+                            <td>Fully automatic (restarts pods)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <aside class="notes">Start with Off mode to observe recommendations. Do NOT use VPA Auto mode with HPA on the same CPU/memory metrics — they will conflict. minAllowed/maxAllowed prevent unreasonable values.</aside>
+            </section>
+
+            <!-- VPA + HPA -->
+            <section>
+                <h2>&#9888;&#65039; VPA + HPA — Compatibility</h2>
+                <div class="highlight-box danger">
+                    <strong>Do NOT</strong> use VPA (Auto mode) and HPA on the same metrics (CPU/memory) simultaneously. They will fight each other.
+                </div>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>&#10060; Conflicting Setup</h4>
+                        <ul>
+                            <li>HPA scales on CPU utilization</li>
+                            <li>VPA adjusts CPU requests</li>
+                            <li>VPA changes requests → HPA sees different utilization → scales differently → VPA readjusts...</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>&#9989; Compatible Setup</h4>
+                        <ul>
+                            <li>HPA scales on custom metrics (RPS, queue depth)</li>
+                            <li>VPA manages CPU/memory requests</li>
+                            <li>Each autoscaler owns different dimensions</li>
+                            <li>Or: VPA in <strong>Off</strong> mode for recommendations only</li>
+                        </ul>
+                    </div>
+                </div>
+                <aside class="notes">If HPA targets CPU and VPA adjusts CPU requests, they create a feedback loop. Safe patterns: VPA in Off mode alongside HPA, or HPA on custom metrics while VPA handles resource sizing.</aside>
+            </section>
+
+            <!-- Section Divider: Cluster Autoscaler -->
             <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
-                <h2>&#9989; Security Best Practices</h2>
-                <h3>Hardening your cluster</h3>
-                <aside class="notes">These recommendations come from Kubernetes security docs, CIS benchmarks, and operational experience.</aside>
+                <h2>&#9729;&#65039; Cluster Autoscaler</h2>
+                <h3>Scaling the nodes, not just the pods</h3>
+                <aside class="notes">HPA and VPA scale pods; Cluster Autoscaler scales the nodes underneath them. This is the third autoscaler exercised in Lab 3.</aside>
             </section>
 
-            <!-- Slide 25: Principle of Least Privilege -->
+            <!-- Cluster Autoscaler Overview -->
             <section>
-                <h2>&#128272; Principle of Least Privilege in Practice</h2>
-                <div class="card">
-                    <h4>RBAC Least Privilege</h4>
-                    <ul>
-                        <li>Use Roles over ClusterRoles when possible</li>
-                        <li>Grant specific verbs — avoid <code>*</code></li>
-                        <li>Name specific resources; use <code>resourceNames</code> for fine-grained control</li>
-                        <li>Audit with <code>kubectl auth can-i</code> and <code>--as</code> to test effective permissions</li>
-                    </ul>
+                <h2>&#9729;&#65039; Cluster Autoscaler — Node-Level Scaling</h2>
+                <div class="concept-box">
+                    <h4>HPA and VPA scale pods — but pods need nodes to run on</h4>
+                    <p>When pods stay <strong>Pending</strong> because no node has enough CPU/memory, the Cluster Autoscaler adds nodes. When nodes sit underutilized, it removes them.</p>
                 </div>
-                <aside class="notes">resourceNames restricts access to specific named resources. Use kubectl auth can-i with --as to test effective permissions before deploying changes.</aside>
-            </section>
-
-            <!-- Slide 26: Audit Logging -->
-            <section>
-                <h2>&#128221; Audit Logging</h2>
-                <div class="card">
-                    <h4>Audit Levels</h4>
-                    <ul>
-                        <li><strong>None:</strong> Skip logging</li>
-                        <li><strong>Metadata:</strong> Request metadata only</li>
-                        <li><strong>Request:</strong> Metadata + request body</li>
-                        <li><strong>RequestResponse:</strong> Log everything</li>
-                    </ul>
-                </div>
-                <div class="key-point">
-                    <strong>Guidance:</strong> Log RBAC changes at <strong>RequestResponse</strong>; log secrets at <strong>Metadata</strong> only to avoid exposing values.
-                </div>
-                <aside class="notes">Log RBAC changes at RequestResponse level. Log secrets at Metadata only to avoid exposing values. In EKS, enable control plane logging and ship audit logs to CloudWatch.</aside>
-            </section>
-
-            <!-- Slide 27: Image Security -->
-            <section>
-                <h2>&#128225; Image Security</h2>
                 <div class="two-columns">
-                    <div>
-                        <div class="card">
-                            <h4>Image Scanning</h4>
-                            <ul>
-                                <li>Scan in CI/CD pipeline (Trivy, Grype)</li>
-                                <li>ECR image scanning (on push)</li>
-                                <li>Block critical CVEs from deploying</li>
-                                <li>Scan base images regularly</li>
-                            </ul>
-                        </div>
-                        <div class="highlight-box" style="margin-top: 15px;">
-                            <strong>Always use:</strong> <code>imagePullPolicy: Always</code> with immutable tags or digests
-                        </div>
+                    <div class="card">
+                        <h4>&#10133; Scale Up</h4>
+                        <ul>
+                            <li>Watches for Pending pods that fail scheduling on a resource shortfall</li>
+                            <li>Adds nodes to an EC2 Auto Scaling Group / managed node group</li>
+                            <li>Respects node group <code>min</code>/<code>max</code> size bounds</li>
+                        </ul>
                     </div>
-                    <div>
-                        <div class="card">
-                            <h4>Image Signing &amp; Verification</h4>
-                            <ul>
-                                <li>Sign images with Cosign / Notation</li>
-                                <li>Verify signatures at admission</li>
-                                <li>Use allowlisted registries only</li>
-                                <li>Pin images by SHA256 digest</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-                <aside class="notes">Never use the latest tag — always use immutable tags or SHA256 digests. Cosign is becoming the standard for signing. Kyverno or OPA/Gatekeeper can enforce registry allowlists and signature verification.</aside>
-            </section>
-
-            <!-- Slide 28: EKS Security Best Practices -->
-            <section>
-                <h2>&#9889; EKS Security Best Practices</h2>
-                <div class="two-columns">
-                    <div>
-                        <div class="card">
-                            <h4>Cluster Configuration</h4>
-                            <ul>
-                                <li>Enable envelope encryption for secrets</li>
-                                <li>Use private API endpoint</li>
-                                <li>Enable control plane logging</li>
-                                <li>Restrict CIDR for API access</li>
-                                <li>Keep Kubernetes version current</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="card">
-                            <h4>Workload Configuration</h4>
-                            <ul>
-                                <li>Use IRSA or EKS Pod Identity</li>
-                                <li>Enforce Pod Security Standards</li>
-                                <li>Use NetworkPolicies (needs CNI support)</li>
-                                <li>Rotate ServiceAccount tokens</li>
-                                <li>Use external secrets (Secrets Manager)</li>
-                            </ul>
-                        </div>
+                    <div class="card">
+                        <h4>&#10134; Scale Down</h4>
+                        <ul>
+                            <li>Removes nodes left underutilized for ~10 minutes</li>
+                            <li>Reschedules their pods onto the remaining nodes</li>
+                            <li>Skips nodes whose pods cannot be safely evicted (respects PDBs)</li>
+                        </ul>
                     </div>
                 </div>
                 <div class="key-point">
-                    <strong>aws-auth ConfigMap:</strong> Regularly audit this to ensure only authorized IAM principals have cluster access. Consider migrating to EKS access entries for more granular control.
+                    <strong>On EKS:</strong> Cluster Autoscaler drives node group capacity; <strong>Karpenter</strong> is a modern alternative that provisions right-sized nodes directly from pending-pod requirements.
                 </div>
-                <aside class="notes">The aws-auth ConfigMap is a common misconfiguration source — audit regularly. Envelope encryption uses a KMS key you control. EKS access entries are the newer replacement for aws-auth.</aside>
+                <aside class="notes">Cluster Autoscaler is node-level, not pod-level: it reacts to unschedulable (Pending) pods by adding nodes and consolidates by removing idle ones. In Lab 2 you trigger this by requesting more CPU than the cluster can schedule and watch new nodes join (2-5 minutes). Karpenter is the newer EKS-native approach.</aside>
             </section>
 
-            <!-- Slide 34: Lab Callout -->
+            <!-- Section Divider: KEDA -->
+            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
+                <h2>&#9889; KEDA</h2>
+                <h3>Kubernetes Event-Driven Autoscaling</h3>
+                <aside class="notes">KEDA extends autoscaling for event-driven workloads and scale-to-zero.</aside>
+            </section>
+
+            <!-- KEDA Overview -->
+            <section>
+                <h2>&#9889; KEDA — Event-Driven Autoscaling</h2>
+                <div class="concept-box">
+                    <h4>What KEDA adds beyond HPA</h4>
+                    <p>KEDA is a lightweight component that can scale Kubernetes workloads based on <strong>external event sources</strong> — and can scale to <strong>zero</strong>.</p>
+                </div>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>KEDA Capabilities</h4>
+                        <ul>
+                            <li>Scale to/from zero replicas</li>
+                            <li>60+ built-in scalers (SQS, Kafka, Prometheus, Cron)</li>
+                            <li>Works alongside native HPA via ScaledObject/ScaledJob</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>When to use KEDA</h4>
+                        <ul>
+                            <li>Queue-based workers (SQS, Kafka)</li>
+                            <li>Schedule-based or scale-to-zero scenarios</li>
+                            <li>Complex multi-metric scaling logic</li>
+                        </ul>
+                    </div>
+                </div>
+                <aside class="notes">KEDA extends HPA (creates/manages HPA objects under the hood). Key strengths: scale-to-zero and 60+ event source scalers.</aside>
+            </section>
+
+            <!-- KEDA YAML -->
+            <section>
+                <h2>&#9889; KEDA ScaledObject &amp; Scale-to-Zero</h2>
+                <div class="key-point">
+                    <strong>Scale-to-zero:</strong> When the queue is empty, KEDA scales to 0 replicas. When messages arrive, it scales back up -- reducing costs for bursty workloads.
+                </div>
+                <aside class="notes">queueLength of 5 means KEDA targets 5 messages per pod — 50 messages = 10 pods.</aside>
+            </section>
+
+            <!-- Section Divider: Prometheus -->
+            <section data-background="linear-gradient(135deg, #2b6cb0 0%, #2c5282 100%)" class="section-divider">
+                <h2>&#128202; Monitoring Scaling with Prometheus</h2>
+                <h3>Observability for scaling decisions</h3>
+                <aside class="notes">Metrics Server gives current values. Prometheus provides historical data and trends.</aside>
+            </section>
+
+            <!-- Prometheus Metrics -->
+            <section>
+                <h2>&#128202; Key Prometheus Metrics for Scaling</h2>
+                <table>
+                    <thead>
+                        <tr><th>Metric</th><th>Source</th><th>Use</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>container_cpu_usage_seconds_total</code></td>
+                            <td>cAdvisor</td>
+                            <td>Actual CPU consumption per container</td>
+                        </tr>
+                        <tr>
+                            <td><code>container_memory_working_set_bytes</code></td>
+                            <td>cAdvisor</td>
+                            <td>Memory usage (what K8s uses for OOM decisions)</td>
+                        </tr>
+                        <tr>
+                            <td><code>kube_pod_container_resource_requests</code></td>
+                            <td>kube-state-metrics</td>
+                            <td>Configured resource requests</td>
+                        </tr>
+                        <tr>
+                            <td><code>kube_horizontalpodautoscaler_status_current_replicas</code></td>
+                            <td>kube-state-metrics</td>
+                            <td>Current HPA replica count</td>
+                        </tr>
+                        <tr>
+                            <td><code>kube_horizontalpodautoscaler_status_desired_replicas</code></td>
+                            <td>kube-state-metrics</td>
+                            <td>HPA desired replica count</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <aside class="notes">Compare current vs. desired replica counts to understand scaling decisions over time. This PromQL calculates CPU utilization as a percentage of requests — matching what HPA computes internally.</aside>
+            </section>
+
+            <!-- Best Practices -->
+            <section>
+                <h2>&#127919; Scaling Best Practices</h2>
+                <div class="two-columns">
+                    <div class="card">
+                        <h4>&#9989; Do</h4>
+                        <ul>
+                            <li>Always set resource requests</li>
+                            <li>Start with CPU-based HPA at 60-70% target</li>
+                            <li>Use conservative scale-down (300s+ window)</li>
+                            <li>Monitor HPA events and load test to validate</li>
+                            <li>Use VPA in Off mode for right-sizing data</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>&#10060; Don't</h4>
+                        <ul>
+                            <li>Skip resource requests (HPA won't work)</li>
+                            <li>Set target too high (90%+) or too low (20%)</li>
+                            <li>Use VPA Auto + HPA on same metric</li>
+                            <li>Set maxReplicas too low for actual demand</li>
+                            <li>Ignore readiness probes or cluster capacity</li>
+                        </ul>
+                    </div>
+                </div>
+                <aside class="notes">60-70% CPU target leaves headroom for scaling lag. Load test to validate. Pod autoscaling requires sufficient cluster node capacity (Cluster Autoscaler).</aside>
+            </section>
+
+            <!-- Lab Callout: Autoscaling (teaching above precedes the lab) -->
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="lab-callout">
-                <h2>&#128295; Lab 7: RBAC and Security</h2>
-                <h3>Hands-on: Securing your cluster workloads</h3>
+                <h2>&#128295; Lab 3: Configuring Autoscaling</h2>
+                <h3>Hands-on: HPA, VPA, and Cluster Autoscaler</h3>
                 <ul>
-                    <li>Create Roles and RoleBindings for namespace-scoped access</li>
-                    <li>Test permissions with <code>kubectl auth can-i --as</code></li>
-                    <li>Create dedicated ServiceAccounts for applications</li>
-                    <li>Apply security contexts to pods and containers</li>
-                    <li>Configure Pod Security Admission on a namespace</li>
-                    <li>Verify that non-compliant pods are rejected</li>
-                    <li>Annotate a ServiceAccount for IRSA and verify scoped AWS credentials</li>
+                    <li>Deploy an application with resource requests and limits</li>
+                    <li>Create an HPA on CPU, generate load, and observe scaling</li>
+                    <li>Apply a v2 HPA and tune behavior policies (stabilization windows)</li>
+                    <li>Configure a VPA in Off mode and review its recommendations</li>
+                    <li>Trigger unschedulable pods and watch the Cluster Autoscaler add nodes</li>
+                    <li>Monitor with <code>kubectl top</code> and <code>kubectl get hpa -w</code></li>
                 </ul>
                 <div class="highlight-box">
-                    <strong>Duration:</strong> ~45-55 minutes
+                    <strong>Duration:</strong> ~45 minutes
                 </div>
-                <aside class="notes">Full RBAC workflow plus security contexts and Pod Security Admission. Common issues: missing namespace in RoleBindings, wrong apiGroup in subjects. Key diagnostic: kubectl auth can-i.</aside>
+                <aside class="notes">Uses a CPU-intensive app and load generator. Participants observe HPA scaling in real time and tune behavior policies.</aside>
             </section>
 
-            <!-- Key Takeaways -->
+            <!-- Summary -->
             <section>
-                <h2>&#127919; Key Takeaways</h2>
-                <div class="key-point">
-                    <strong>Least Privilege:</strong> Grant minimum permissions needed. Roles define what; Bindings define who. Start with no access and add as required.
+                <h2>&#128218; Module 3 — Key Takeaways</h2>
+                <div class="concept-box">
+                    <ul>
+                        <li><strong>Resource requests are the foundation</strong> — HPA can't work without them</li>
+                        <li><strong>Metrics Server</strong> provides real-time CPU/memory data for the HPA algorithm</li>
+                        <li><strong>HPA algorithm:</strong> desiredReplicas = ⌈currentReplicas &times; (current/desired)⌉ with ±10% tolerance</li>
+                        <li><strong>autoscaling/v2</strong> supports multiple metrics, custom metrics, and behavior policies</li>
+                        <li><strong>Scale up fast, scale down slow</strong> — the golden rule of behavior tuning</li>
+                        <li><strong>VPA</strong> right-sizes pods (Off mode with HPA); <strong>KEDA</strong> enables scale-to-zero</li>
+                        <li><strong>~55+ seconds</strong> from spike to new pod serving traffic — plan headroom accordingly</li>
+                    </ul>
                 </div>
-                <div class="key-point">
-                    <strong>PSS Restricted Profile:</strong> Use the restricted Pod Security Standard to enforce non-root, read-only FS, and no privilege escalation. Combine with securityContext and audit logging for defense in depth.
-                </div>
-                <div class="key-point">
-                    <strong>IRSA for Pod Identity:</strong> Per-pod AWS credentials via OIDC federation eliminate shared node IAM roles and static credentials.
-                </div>
-                <div class="key-point">
-                    <strong>Audit Logging:</strong> Enable audit logging and forward to your SIEM for detecting unauthorized access and policy violations.
-                </div>
-                <aside class="notes">Least privilege applies to both RBAC and IAM. PSS restricted replaces PSPs. IRSA eliminates long-lived AWS credentials. Audit logging supports compliance and incident response.</aside>
+                <aside class="notes">Key points: always set resource requests, use autoscaling/v2, tune behavior policies, monitor HPA status.</aside>
             </section>
 
-            <!-- Slide 32: Questions -->
+
+            <!-- Questions -->
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="questions-slide" style="text-align: center;">
                 <h2>&#10067; Questions &amp; Discussion</h2>
-                <p>How does your team currently manage access control in your Kubernetes clusters?</p>
-                <p style="font-size: 0.9em; margin-top: 30px;">Up Next: Module 8 &mdash; Network Policies</p>
-                <aside class="notes">Common topics: integrating with identity providers, emergency access, auditing RBAC at scale, and PSS vs. deprecated PodSecurityPolicies.</aside>
+                <p>What scaling challenges have you encountered with your current workloads?</p>
+                <p style="font-size: 0.9em; margin-top: 30px;">Up Next: Module 4 &mdash; Scheduling &amp; Placement</p>
+                <aside class="notes">Common topics: right target utilization, cluster vs. pod autoscaling interaction, memory-bound apps, long startup times.</aside>
             </section>
-
         </div>
     </div>
 

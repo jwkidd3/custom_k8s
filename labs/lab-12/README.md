@@ -1,6 +1,6 @@
-# Lab 12: Helm and Templating
-### Package Management for Kubernetes
-**Intermediate Kubernetes — Module 12 of 13**
+# Lab 12: RBAC and Pod Security
+### Roles, Bindings, Pod Security Standards, and SecurityContexts
+**Intermediate Kubernetes — Module 12 of 18**
 
 ---
 
@@ -8,17 +8,17 @@
 
 ### Objectives
 
-- Install and manage Helm charts from repositories
-- Upgrade and rollback releases
-- Create a custom Helm chart with templating
-- Validate, debug, and package charts
+- Explore existing ClusterRoles and bindings
+- Create Roles, RoleBindings, and ServiceAccounts
+- Apply Pod Security Standards and SecurityContexts
+- Test RBAC permission boundaries
 
 ### Prerequisites
 
-- Completion of Lab 1 with `kubectl` and cluster access configured. Helm installed.
-- Access to a Kubernetes cluster (EKS)
+- Completion of Lab 1 with `kubectl` and cluster access configured
+- kubectl with cluster-admin access on a running EKS cluster
 
-> **Duration:** ~45 minutes
+> **Duration:** ~45-55 minutes
 
 ---
 
@@ -31,217 +31,204 @@ echo "Student: $STUDENT_NAME"
 kubectl config set-context --current --namespace=default
 ```
 
-> ⚠️ **Important:** Your `$STUDENT_NAME` ensures your resources don't conflict with other students.
-
 ---
 
-## Step 1: Verify Helm and Add Repository
+## Step 1: Explore Existing ClusterRoles
+
+Create a namespace and examine the built-in ClusterRoles:
 
 ```bash
-helm version
+kubectl create namespace lab07-$STUDENT_NAME
 
-helm repo add podinfo https://stefanprodan.github.io/podinfo
-helm repo update
+kubectl get clusterroles | head -20
 
-helm search repo podinfo
-helm show chart podinfo/podinfo
-```
-
-> If `helm` is not found: `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash`
-
----
-
-## Step 2: Install a Chart
-
-```bash
-kubectl create namespace helm-lab-$STUDENT_NAME
-
-helm install my-podinfo podinfo/podinfo \
-  --namespace helm-lab-$STUDENT_NAME \
-  --set replicaCount=2 \
-  --set service.type=ClusterIP
-
-kubectl get pods -n helm-lab-$STUDENT_NAME -w
+# Examine key built-in ClusterRoles
+kubectl describe clusterrole admin
+kubectl describe clusterrole edit
+kubectl describe clusterrole view
 ```
 
 ---
 
-## Step 3: Explore the Release
+## Step 2: Create a Namespace-Scoped Role and Bind It
+
+Create a Role that allows read-only access to pods:
+
+<!-- Creates a Role granting get/list/watch on pods and pods/log -->
+
+Apply the manifest and create a ServiceAccount:
 
 ```bash
-helm list -n helm-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < pod-reader-role.yaml | kubectl apply -f -
+kubectl create serviceaccount pod-viewer -n lab07-$STUDENT_NAME
+```
 
-helm get values my-podinfo -n helm-lab-$STUDENT_NAME
+<!-- Creates a RoleBinding connecting the pod-viewer SA to the pod-reader Role -->
 
-helm get values my-podinfo -n helm-lab-$STUDENT_NAME --all
+Apply the manifest:
 
-helm get manifest my-podinfo -n helm-lab-$STUDENT_NAME
+```bash
+envsubst '$STUDENT_NAME' < pod-reader-binding.yaml | kubectl apply -f -
 ```
 
 ---
 
-## Step 4: Upgrade the Release
+## Step 3: Test Permissions with kubectl auth can-i
 
 ```bash
-helm upgrade my-podinfo podinfo/podinfo \
-  --namespace helm-lab-$STUDENT_NAME \
-  --set replicaCount=3 \
-  --set service.type=ClusterIP
-
-helm list -n helm-lab-$STUDENT_NAME
-kubectl get pods -n helm-lab-$STUDENT_NAME
+kubectl auth can-i --list -n lab07-$STUDENT_NAME \
+  --as=system:serviceaccount:lab07-$STUDENT_NAME:pod-viewer
 ```
 
-> ⚠️ When using `--set` during upgrade, previous values are **not** preserved unless you include them again or use `--reuse-values`.
+> ✅ **Checkpoint:** The lines **from your Role** are `pods` → `[get list watch]` and `pods/log` → `[get]`.
+>
+> You will also see entries you did *not* grant — the `selfsubject*reviews` APIs and a list of non-resource URLs (`/healthz`, `/version`, `/api`, `/apis`, `/openapi`, `/openid/v1/jwks`, …). Those are the **defaults every authenticated identity gets**, via the built-in `system:basic-user`, `system:discovery`, and `system:public-info-viewer` ClusterRoleBindings. `kubectl auth can-i --list` prints the **union** of *all* applicable rules, not just your Role — so those discovery/self-review entries always appear. The key point still holds: your ServiceAccount has **no write access to anything**.
+>
+> The `Warning: the list may be incomplete: webhook authorizer does not support user rule resolution` line is expected on EKS — the AWS authorizer can't enumerate rules, so the list reflects Kubernetes RBAC only.
 
 ---
 
-## Step 5: Release History and Rollback
+## Step 4: Deploy a Pod Using the ServiceAccount
+
+<!-- Creates a pod running kubectl with the pod-viewer ServiceAccount -->
+
+Apply the manifest:
 
 ```bash
-helm history my-podinfo -n helm-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < rbac-test-pod.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/rbac-test -n lab07-$STUDENT_NAME --timeout=60s
 
-helm rollback my-podinfo 1 -n helm-lab-$STUDENT_NAME
+# This should SUCCEED
+kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl get pods -n lab07-$STUDENT_NAME
 
-helm list -n helm-lab-$STUDENT_NAME
-kubectl get pods -n helm-lab-$STUDENT_NAME
-
-helm history my-podinfo -n helm-lab-$STUDENT_NAME
+# This should FAIL with Forbidden
+kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl create deployment \
+  test --image=nginx -n lab07-$STUDENT_NAME
 ```
 
-> ✅ After rollback, the release is at `REVISION: 3` with 2 replicas. A rollback creates a new revision.
+> ✅ **Checkpoint:** `get pods` succeeds; `create deployment` fails with Forbidden.
 
 ---
 
-## Step 6: Create a Custom Chart
+## Step 5: Create a ClusterRole for Cross-Namespace Access
+
+<!-- Creates a ClusterRole granting read access to pods, services, deployments, and replicasets -->
+
+Apply the manifest and create a ServiceAccount:
 
 ```bash
-helm create mychart
-
-find mychart/ -type f | sort
+envsubst '$STUDENT_NAME' < cluster-reader-role.yaml | kubectl apply -f -
+kubectl create serviceaccount cluster-viewer -n lab07-$STUDENT_NAME
 ```
 
-Examine the chart metadata and templates:
+Bind it with a ClusterRoleBinding:
+
+<!-- Creates a ClusterRoleBinding connecting the cluster-viewer SA to the ClusterRole -->
+
+Apply the manifest:
 
 ```bash
-cat mychart/Chart.yaml
-cat mychart/values.yaml
-cat mychart/templates/deployment.yaml
-cat mychart/templates/_helpers.tpl
+envsubst '$STUDENT_NAME' < cluster-reader-binding.yaml | kubectl apply -f -
+
+# Test cross-namespace read (should be YES)
+kubectl auth can-i list pods -n kube-system \
+  --as=system:serviceaccount:lab07-$STUDENT_NAME:cluster-viewer
+
+# Test delete (should be NO)
+kubectl auth can-i delete pods -n kube-system \
+  --as=system:serviceaccount:lab07-$STUDENT_NAME:cluster-viewer
 ```
+
+> ✅ **Checkpoint:** `list pods` returns `yes` in any namespace; `delete pods` returns `no`.
 
 ---
 
-## Step 7: Customize Templates
+## Step 6: Apply Pod Security Standards
 
-Create a ConfigMap template. Save as `mychart/templates/configmap.yaml`:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "mychart.fullname" . }}-config
-  labels:
-    {{- include "mychart.labels" . | nindent 4 }}
-data:
-  APP_ENV: {{ .Values.appConfig.environment | quote }}
-  APP_LOG_LEVEL: {{ .Values.appConfig.logLevel | quote }}
-  {{- if .Values.appConfig.customMessage }}
-  CUSTOM_MESSAGE: {{ .Values.appConfig.customMessage | quote }}
-  {{- end }}
-```
-
-Add to the end of `mychart/values.yaml`:
-
-```yaml
-appConfig:
-  environment: production
-  logLevel: info
-  customMessage: "Hello from Helm!"
-```
-
-Add an `envFrom` to the container in `mychart/templates/deployment.yaml` so the pod loads the ConfigMap. Indentation here is unforgiving, so insert it with this command — it places the block right after `imagePullPolicy:` at the correct indent:
+Create a namespace with the **restricted** Pod Security Standard:
 
 ```bash
-perl -i -pe 's/^(\s*imagePullPolicy:.*)$/$1\n          envFrom:\n            - configMapRef:\n                name: {{ include "mychart.fullname" . }}-config/' mychart/templates/deployment.yaml
-```
+kubectl create namespace lab07-restricted-$STUDENT_NAME
 
-This inserts (note `envFrom:` aligns with `image:`/`ports:` at 10 spaces):
-
-```yaml
-          envFrom:
-            - configMapRef:
-                name: {{ include "mychart.fullname" . }}-config
-```
-
-> ⚠️ Verify it before moving on: `helm lint mychart/` should pass, and `helm template r mychart/ | grep -A2 envFrom` should show the block. If you edit by hand instead, `envFrom:` must align with `image:`/`ports:`.
-
----
-
-## Step 8: Validate and Debug
-
-```bash
-helm lint mychart/
-
-helm template my-release mychart/
-
-helm template my-release mychart/ --set appConfig.environment=staging
-
-helm install my-release mychart/ \
-  --namespace helm-lab-$STUDENT_NAME \
-  --dry-run --debug
+kubectl label namespace lab07-restricted-$STUDENT_NAME \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/enforce-version=latest \
+  pod-security.kubernetes.io/warn=restricted \
+  pod-security.kubernetes.io/warn-version=latest \
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/audit-version=latest
 ```
 
 ---
 
-## Step 9: Package and Install Custom Chart
+## Step 7: Test Pod Security -- Violations
+
+Try deploying pods that violate the restricted profile:
+
+<!-- Creates a pod with privileged: true (should be rejected) -->
+
+<!-- Creates a pod running as root user (should be rejected) -->
+
+Apply both manifests:
 
 ```bash
-helm package mychart/
-
-helm install my-custom-app mychart-0.1.0.tgz \
-  --namespace helm-lab-$STUDENT_NAME \
-  --set appConfig.environment=development \
-  --set appConfig.logLevel=debug
-
-helm list -n helm-lab-$STUDENT_NAME
-kubectl get all -n helm-lab-$STUDENT_NAME -l app.kubernetes.io/instance=my-custom-app
+# Both should FAIL under the restricted profile
+envsubst '$STUDENT_NAME' < privileged-pod.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < root-pod.yaml | kubectl apply -f -
 ```
 
-Verify the ConfigMap and environment variables:
-
-```bash
-kubectl describe configmap my-custom-app-mychart-config -n helm-lab-$STUDENT_NAME
-
-kubectl exec -n helm-lab-$STUDENT_NAME \
-  $(kubectl get pod -n helm-lab-$STUDENT_NAME -l \
-    app.kubernetes.io/instance=my-custom-app \
-    -o jsonpath='{.items[0].metadata.name}') \
-  -- env | grep -E "APP_|CUSTOM"
-```
-
-> ✅ Should show `APP_ENV=development`, `APP_LOG_LEVEL=debug`, `CUSTOM_MESSAGE=Hello from Helm!`
+> ✅ **Checkpoint:** Both pods are blocked. The privileged pod is rejected by two independent admission layers — expect a Pod Security error (`violates PodSecurity "restricted:latest"`) or the cluster Kyverno policy message (`Privileged containers are not allowed.`). The root pod fails the `runAsNonRoot` check. Either message means the guardrails are working.
 
 ---
 
-## Step 10: Clean Up
+## Step 8: Deploy a Compliant Secure Pod
+
+<!-- Creates a pod that meets the restricted security profile (non-root, read-only FS, no capabilities) -->
+
+Apply the manifest:
 
 ```bash
-helm uninstall my-podinfo -n helm-lab-$STUDENT_NAME
-helm uninstall my-custom-app -n helm-lab-$STUDENT_NAME
-kubectl delete namespace helm-lab-$STUDENT_NAME
-rm -rf mychart/ mychart-*.tgz
+envsubst '$STUDENT_NAME' < secure-pod.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/secure-app \
+  -n lab07-restricted-$STUDENT_NAME --timeout=60s
+
+# Verify security settings inside the pod
+kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- id
+kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- touch /test-file
+kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- touch /tmp/test-file
+kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- \
+  cat /proc/1/status | grep -i cap
+```
+
+> ✅ **Checkpoint:**
+> - `id` --> `uid=1000 gid=1000 groups=1000`
+> - `touch /test-file` --> **Read-only file system** error
+> - `touch /tmp/test-file` --> succeeds
+> - `CapEff` --> `0000000000000000` (no capabilities)
+
+---
+
+---
+
+## Step 9: Clean Up
+
+```bash
+kubectl delete clusterrolebinding cluster-pod-reader-binding-$STUDENT_NAME
+kubectl delete clusterrole cluster-pod-reader-$STUDENT_NAME
+
+kubectl delete namespace lab07-$STUDENT_NAME
+kubectl delete namespace lab07-restricted-$STUDENT_NAME
 ```
 
 ---
 
-## Key Takeaways
+## Summary
 
-- **Helm Repositories** -- add, search, and install charts from community registries
-- **Release Management** -- install, upgrade, rollback with full revision history
-- **Custom Charts** -- scaffold and organize chart templates with Go templating
-- **Validation** -- lint, template, and dry-run before deploying
+- RBAC uses an additive model -- permissions are granted, never denied
+- Roles are namespace-scoped; ClusterRoles are cluster-scoped; bind them with RoleBindings or ClusterRoleBindings
+- Pod Security Standards (restricted, baseline, privileged) enforce security profiles at the namespace level
+- SecurityContext settings (`runAsNonRoot`, `readOnlyRootFilesystem`, `drop: ALL`) provide defense-in-depth
 
 ---
 
-*Lab 12 Complete — Up Next: Lab 13 — CI/CD and GitOps*
+*Lab 12 Complete — Up Next: Lab 13 — Network Policies*

@@ -1,29 +1,22 @@
-# Lab 9: Observability
-### Monitoring, Logging, and Debugging Kubernetes Workloads
-**Intermediate Kubernetes — Module 9 of 13**
+# Lab 9: ConfigMaps and Secrets
+### Externalizing Configuration and Managing Sensitive Data
+**Intermediate Kubernetes — Module 9 of 18**
 
 ---
 
 ## Lab Overview
 
-### What You'll Learn
+### What You Will Do
 
-- Container log collection and analysis
-- Prometheus metrics and PromQL queries
-- Grafana dashboards for visualization
-- Custom alerting rules
-- *Optional:* Debug a failing application using observability tools
-- *Optional:* Explore distributed tracing with Jaeger and OpenTelemetry
+- Create ConfigMaps from literals and files; consume as env vars and volume mounts
+- Create Secrets (Opaque, TLS) and consume as env vars and volume mounts
+- Mark ConfigMaps as immutable and observe update rejection
+- Combine ConfigMap, Secret, and Downward API data using projected volumes
+- *Optional:* Sync secrets from HashiCorp Vault using External Secrets Operator
 
-### Lab Details
+### Prerequisites
 
-- **Duration:** ~45-55 minutes
-
-> **Note:** Step 9 is an optional stretch goal for students who finish early.
-- **Difficulty:** Intermediate
-- **Prerequisites:** Lab 1 (cluster access configured)
-
-> ⚠️ **Note:** Verify metrics-server is running before you begin.
+- Completion of Lab 1 with `kubectl` and cluster access configured  |  **Duration:** ~30-40 minutes
 
 ---
 
@@ -36,245 +29,207 @@ echo "Student: $STUDENT_NAME"
 kubectl config set-context --current --namespace=default
 ```
 
-> ⚠️ **Important:** Your `STUDENT_NAME` ensures your resources don't conflict with other students on this shared cluster.
-
 ---
 
-## Step 1: Explore Container Logs with kubectl
+## Step 1: Create ConfigMaps from Literals and Files
 
-Create a namespace and deploy a log-generating pod:
+Create a namespace and a ConfigMap using literal key-value pairs:
 
 ```bash
-kubectl create namespace obs-lab-$STUDENT_NAME
-kubectl config set-context --current --namespace=obs-lab-$STUDENT_NAME
+kubectl create namespace lab05-$STUDENT_NAME
+
+kubectl create configmap app-config \
+    --from-literal=APP_ENV=production \
+    --from-literal=APP_LOG_LEVEL=info \
+    --from-literal=APP_MAX_CONNECTIONS=100 \
+    --from-literal=APP_CACHE_TTL=3600 \
+    -n lab05-$STUDENT_NAME
+
+kubectl get configmap app-config -n lab05-$STUDENT_NAME -o yaml
 ```
 
-```bash
-kubectl run log-generator --image=busybox \
-  --restart=Never -- \
-  sh -c 'i=0; while true; do
-    echo "$(date +%Y-%m-%dT%H:%M:%S) INFO  request_id=$i \
-      status=200 path=/api/health duration=12ms";
-    echo "$(date +%Y-%m-%dT%H:%M:%S) DEBUG request_id=$i cache_hit=true";
-    if [ $((i % 10)) -eq 0 ]; then
-      echo "$(date +%Y-%m-%dT%H:%M:%S) WARN  request_id=$i \
-        high_latency=true duration=1500ms";
-    fi;
-    i=$((i+1)); sleep 2;
-  done'
-
-kubectl wait --for=condition=Ready pod/log-generator --timeout=30s
-```
-
-### Explore kubectl logs Flags
+Now create configuration files and load them into a ConfigMap. The `nginx.conf` file is static, while `app.properties` contains your student name:
 
 ```bash
-kubectl logs log-generator --tail=20
-kubectl logs log-generator -f
-kubectl logs log-generator --since=5m
-kubectl logs log-generator --timestamps
-```
+cp nginx.conf /tmp/nginx.conf
+envsubst '$STUDENT_NAME' < app.properties > /tmp/app.properties
 
-> 💡 **Key Flags:** `-f` to follow, `--previous` for crashed containers, `-c <name>` for multi-container pods, `--tail=N` and `--since=duration` to filter.
-
-### Multi-Container Pod Logs
-
-<!-- Creates a Pod with two containers (app + sidecar) for log exploration -->
-```bash
-envsubst '$STUDENT_NAME' < multi-container-app.yaml | kubectl apply -f -
-```
-
-```bash
-kubectl logs multi-container-app -c app
-kubectl logs multi-container-app -c sidecar
-kubectl logs multi-container-app --all-containers=true
+kubectl create configmap app-files \
+    --from-file=nginx.conf=/tmp/nginx.conf \
+    --from-file=app.properties=/tmp/app.properties \
+    -n lab05-$STUDENT_NAME
 ```
 
 ---
 
-## Step 2: Structured JSON Logging
+## Step 2: Consume ConfigMap as Environment Variables
 
-<!-- Creates a Deployment that outputs structured JSON logs -->
+### Using envFrom (inject all keys)
+
+<!-- Creates a pod that imports all ConfigMap keys as env vars -->
+
+Apply the manifest:
+
 ```bash
-envsubst '$STUDENT_NAME' < json-logger.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < pod-envfrom.yaml | kubectl apply -f -
+kubectl logs env-from-demo -n lab05-$STUDENT_NAME | grep APP_
 ```
 
-### View and Filter JSON Logs
+### Using valueFrom (inject specific keys with renaming)
+
+<!-- Creates a pod that selectively maps ConfigMap keys to different env var names -->
+
+Apply the manifest:
 
 ```bash
-kubectl logs deployment/json-logger --all-containers=true --tail=5
-kubectl logs deployment/json-logger -f --max-log-requests=5
-kubectl logs -l app=json-logger --tail=10
+envsubst '$STUDENT_NAME' < pod-valuefrom.yaml | kubectl apply -f -
+kubectl logs value-from-demo -n lab05-$STUDENT_NAME
 ```
 
-> 💡 **Tip:** Pipe JSON logs through `jq` for local filtering:
-> ```bash
-> kubectl logs -l app=json-logger --tail=20 | jq 'select(.status != 200)'
-> ```
+> ✅ **Checkpoint:** Output is `Env=production Log=info`.
 
 ---
 
-## Step 3: Examine Metrics Server Data
+## Step 3: Consume ConfigMap as Volume Mounts
+
+Mount the configuration files into an nginx container:
+
+<!-- Creates a pod with ConfigMap data mounted as files -->
+
+Apply the manifest:
 
 ```bash
-kubectl get deployment metrics-server -n kube-system
-kubectl get apiservice v1beta1.metrics.k8s.io
+envsubst '$STUDENT_NAME' < pod-volume-mount.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/volume-mount-demo \
+    -n lab05-$STUDENT_NAME --timeout=60s
+
+kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
+    cat /etc/nginx/conf.d/default.conf
+kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
+    cat /etc/app/app.properties
+kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
+    curl -s http://localhost/health
 ```
 
-> 💡 If not installed: `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`
-
-### kubectl top: Node and Pod Metrics
-
-```bash
-kubectl top nodes
-kubectl top pods
-kubectl top pods --sort-by=cpu
-kubectl top pods --sort-by=memory
-kubectl top pods --containers
-```
-
-### Deploy a Resource-Intensive Workload
-
-<!-- Creates a CPU-intensive Deployment for metrics observation -->
-```bash
-envsubst '$STUDENT_NAME' < stress-test.yaml | kubectl apply -f -
-```
-
-```bash
-sleep 30
-kubectl top pods -l app=stress-test --containers
-```
-
-> ✅ **Checkpoint:** You can view logs with `-f`, `--tail`, `--since`, target containers with `-c`, and `kubectl top` returns data for nodes and pods.
+> ✅ **Checkpoint:** The health endpoint returns `OK`.
 
 ---
 
-## Step 4: Verify the Prometheus Stack
+## Step 4: Create Secrets
 
-The monitoring stack (Prometheus, Grafana, Alertmanager) has been pre-installed. Verify it is running:
+### Create an Opaque Secret
 
 ```bash
-kubectl get pods -n monitoring
-kubectl get svc -n monitoring
+kubectl create secret generic db-credentials \
+    --from-literal=DB_USERNAME=app_user \
+    --from-literal=DB_PASSWORD='S3cur3P@ssw0rd!' \
+    --from-literal=DB_HOST=postgres-svc.lab05-$STUDENT_NAME.svc.cluster.local \
+    -n lab05-$STUDENT_NAME
+
+kubectl get secret db-credentials -n lab05-$STUDENT_NAME \
+    -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
 ```
 
-> ⚠️ **Important:** Do not reinstall the monitoring stack.
-
----
-
-## Step 5: Query Prometheus Metrics
+### Create a TLS Secret
 
 ```bash
-kubectl port-forward -n monitoring \
-  svc/monitoring-kube-prometheus-prometheus 8080:9090 &
-```
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout tls.key -out tls.crt \
+    -subj "/CN=app.lab05-$STUDENT_NAME.local/O=Lab"
 
-> ⚠️ **Cloud9:** Click **Preview → Preview Running Application** (top menu) to open the Prometheus UI. Or use `curl` in a second terminal tab.
-
-### Run PromQL Queries via curl
-
-```bash
-# Total CPU usage per node
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode 'query=sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance)' | jq .
-
-# Memory usage percentage per node
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode 'query=100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))' | jq .
-
-# Pod CPU usage in your namespace
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode "query=sum(rate(container_cpu_usage_seconds_total{namespace=\"obs-lab-$STUDENT_NAME\"}[5m])) by (pod)" | jq .
-
-# Container restart count
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode 'query=sum(kube_pod_container_status_restarts_total) by (namespace, pod)' | jq .
-```
-
-### Useful Cluster Queries
-
-```bash
-# Pod count per namespace
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode 'query=count(kube_pod_info) by (namespace)' | jq .
-
-# Pods in CrashLoopBackOff
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode 'query=kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}' | jq .
-
-# Top 5 memory consumers
-curl -s 'http://localhost:8080/api/v1/query' \
-  --data-urlencode 'query=topk(5, container_memory_working_set_bytes{container!="", container!="POD"})' | jq .
+kubectl create secret tls app-tls \
+    --cert=tls.crt \
+    --key=tls.key \
+    -n lab05-$STUDENT_NAME
 ```
 
 ---
 
-## Step 6: Explore Grafana Dashboards
+## Step 5: Consume Secrets as Env Vars and Volume Mounts
 
-Stop the Prometheus port-forward first, then forward Grafana on port 8080:
+### Secret as Environment Variables
 
-```bash
-pkill -f "port-forward.*8080" 2>/dev/null
-kubectl port-forward -n monitoring \
-  svc/monitoring-kube-prometheus-stack-grafana 8080:80 &
-```
+<!-- Creates a pod that reads Secret keys into env vars -->
 
-Login: `admin` / `admin`
-
-### Verify Grafana via API
+Apply the manifest:
 
 ```bash
-# List available dashboards
-curl -s -u admin:admin http://localhost:8080/api/search | jq '.[].title'
-
-# Check datasources
-curl -s -u admin:admin http://localhost:8080/api/datasources | jq '.[].name'
+envsubst '$STUDENT_NAME' < pod-secret-env.yaml | kubectl apply -f -
+kubectl logs secret-env-demo -n lab05-$STUDENT_NAME
 ```
 
-### Exercise: Investigate the stress-test Workload
+### Secret as Volume Mount
 
-In the Grafana UI (Cloud9 Preview or browser), navigate to:
+<!-- Creates a pod that mounts a Secret as files with restricted permissions -->
 
-1. **Dashboards → Kubernetes / Compute Resources / Namespace (Pods)**
-2. Select namespace: `obs-lab-$STUDENT_NAME`
-3. Locate the `stress-test` pods and note their CPU usage
-4. Click a pod name to drill into the per-pod dashboard
+Apply the manifest:
+
+```bash
+envsubst '$STUDENT_NAME' < pod-secret-volume.yaml | kubectl apply -f -
+kubectl logs secret-vol-demo -n lab05-$STUDENT_NAME
+kubectl exec secret-vol-demo -n lab05-$STUDENT_NAME -- cat /etc/db-creds/DB_USERNAME
+```
+
+> ✅ **Checkpoint:** Secret files are mounted with `0400` permissions. (A plain `ls -l` shows the keys as `lrwxrwxrwx` symlinks — that's Kubernetes' atomic-writer layout; the `0400` applies to the real files they point to, which `ls -lL` dereferences to.)
 
 ---
 
-## Step 7: Create a Custom PrometheusRule Alert
+## Step 6: Immutable ConfigMaps
 
-Review `prom-rule.yaml` — it defines two alerting rules for pod restart detection:
+Kubernetes allows ConfigMaps to be marked as **immutable** — once set, neither the data nor the `immutable` flag can be changed. This protects production configuration from accidental edits and lets the kubelet skip watch overhead.
 
-```bash
-envsubst '$STUDENT_NAME' < prom-rule.yaml | kubectl apply -f -
-```
-
-> 💡 The `labels.release` is the conventional way to tag a rule for the kube-prometheus-stack operator. This platform configures the operator to select **all** PrometheusRules (`ruleSelectorNilUsesHelmValues: false`), so the rule is picked up regardless — the label is included as good practice.
+Apply the immutable ConfigMap:
 
 ```bash
-kubectl get prometheusrules -n monitoring
-
-# Verify the rule was picked up by Prometheus (may take up to 60s)
-pkill -f "port-forward.*8080" 2>/dev/null
-kubectl port-forward -n monitoring \
-  svc/monitoring-kube-prometheus-prometheus 8080:9090 &
-sleep 5
-curl -s 'http://localhost:8080/api/v1/rules' | jq '.data.groups[].rules[] | select(.name | test("pod"))'
+envsubst '$STUDENT_NAME' < immutable-config.yaml | kubectl apply -f -
 ```
 
-> ✅ **Checkpoint:** You should see the `HighPodRestartCount` and `PodCrashLooping` rules in the output.
+Inspect the ConfigMap and confirm it is immutable:
+
+```bash
+kubectl get configmap immutable-app-config -n lab05-$STUDENT_NAME -o yaml
+```
+
+> Note the `immutable: true` field and the two data keys: `APP_VERSION` and `FEATURE_FLAGS`.
+
+Now attempt to update a value:
+
+```bash
+kubectl patch configmap immutable-app-config -n lab05-$STUDENT_NAME \
+    --type merge -p '{"data":{"APP_VERSION":"3.0.0"}}'
+```
+
+> ✅ **Checkpoint:** The patch command is rejected with an error indicating the ConfigMap is immutable. To change an immutable ConfigMap you must delete and recreate it.
 
 ---
 
-## Step 8: CloudWatch Container Insights (Optional)
+## Step 7: Projected Volumes
+
+A **projected volume** combines multiple sources — ConfigMaps, Secrets, and the Downward API — into a single mount point. This is useful when a container needs configuration from several origins under one directory.
+
+Apply the projected-volume pod:
 
 ```bash
-kubectl get daemonset -n amazon-cloudwatch
-kubectl get pods -n amazon-cloudwatch
+envsubst '$STUDENT_NAME' < pod-projected.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/projected-demo \
+    -n lab05-$STUDENT_NAME --timeout=60s
 ```
 
-> 📝 If not enabled on your cluster, continue to the next step.
+List the contents of the projected mount and verify each source:
+
+```bash
+# ConfigMap value (from app-config)
+kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/APP_ENV
+
+# Secret value (from db-credentials)
+kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/DB_USERNAME
+
+# Downward API values
+kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/namespace
+kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/labels
+```
+
+> ✅ **Checkpoint:** `APP_ENV` returns `production`, `DB_USERNAME` returns `app_user`, and `namespace` returns `lab05-<usernumber>`. All four files coexist under `/etc/projected`.
 
 ---
 
@@ -284,115 +239,73 @@ kubectl get pods -n amazon-cloudwatch
 
 > These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
 
-### Step 9: Debug a Failing Application
+### Step 8: Sync Secrets from Vault with External Secrets Operator
 
-<!-- Creates a Deployment that simulates OOM crashes for debugging practice -->
-```bash
-envsubst '$STUDENT_NAME' < buggy-app.yaml | kubectl apply -f -
-```
+The cluster has HashiCorp Vault and the External Secrets Operator (ESO) pre-installed. ESO watches for `ExternalSecret` resources and automatically syncs secrets from Vault into native Kubernetes Secrets.
 
-### Systematic Debugging
+#### Verify the Platform Components
 
 ```bash
-# Events
-kubectl get pods -l app=buggy-app
-kubectl get events --sort-by='.lastTimestamp' \
-  -n obs-lab-$STUDENT_NAME | tail -20
-kubectl describe pod -l app=buggy-app | grep -A 10 "State:"
+# Check Vault is running
+kubectl get pods -n vault
 
-# Logs (use --previous for crashed containers)
-kubectl logs -l app=buggy-app --tail=20
-kubectl logs -l app=buggy-app --previous --tail=20
+# Check ESO is running
+kubectl get pods -n external-secrets
 
-# Metrics
-kubectl top pods -l app=buggy-app
+# Check the ClusterSecretStore is available
+kubectl get clustersecretstore vault-store
 ```
 
-In Prometheus, query restart count and OOMKilled status:
+> ✅ **Checkpoint:** The `vault-store` ClusterSecretStore should show `Ready` status.
 
-```promql
-increase(kube_pod_container_status_restarts_total{
-  namespace="obs-lab-$STUDENT_NAME", pod=~"buggy-app.*"
-}[30m])
+#### Create an ExternalSecret
 
-kube_pod_container_status_last_terminated_reason{
-  namespace="obs-lab-$STUDENT_NAME",
-  reason="OOMKilled"
-}
-```
-
-> ✅ **Checkpoint:** The container exceeds its 32Mi memory limit, so the kubelet records `OOMKilled` as the termination reason with exit code 137 (SIGKILL) — the `OOMKilled` query above returns a data point. The `--previous` flag shows logs from before the crash.
-
----
-
-### Step 10: Distributed Tracing with Jaeger
-
-Jaeger has been pre-installed as part of the monitoring stack. Verify it's running:
+Review `external-secret.yaml` — it defines an ExternalSecret that pulls database credentials from Vault's `prod/database` path:
 
 ```bash
-kubectl get pods -n monitoring -l app.kubernetes.io/name=jaeger
-kubectl get svc -n monitoring -l app.kubernetes.io/name=jaeger
+envsubst '$STUDENT_NAME' < external-secret.yaml | kubectl apply -f -
 ```
 
-### Deploy a Traced Application
-
-This app is configured with OpenTelemetry environment variables pointing to the Jaeger collector:
+#### Verify the Synced Secret
 
 ```bash
-envsubst '$STUDENT_NAME' < traced-app.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod -l app=traced-app \
-  -n obs-lab-$STUDENT_NAME --timeout=60s
+# Check ExternalSecret status (should show SecretSynced)
+kubectl get externalsecret db-external -n lab05-$STUDENT_NAME
+
+# View the Kubernetes Secret that ESO created
+kubectl get secret db-from-vault -n lab05-$STUDENT_NAME
+
+# Decode the synced values
+kubectl get secret db-from-vault -n lab05-$STUDENT_NAME \
+    -o jsonpath='{.data.DB_USERNAME}' | base64 -d
+echo
+
+kubectl get secret db-from-vault -n lab05-$STUDENT_NAME \
+    -o jsonpath='{.data.DB_HOST}' | base64 -d
+echo
 ```
 
-### Inspect OTel Configuration
-
-```bash
-kubectl get pod -l app=traced-app -n obs-lab-$STUDENT_NAME \
-  -o jsonpath='{.items[0].spec.containers[0].env}' | jq .
-```
-
-> ✅ **Checkpoint:** The pod has these OTel environment variables:
-> - `OTEL_SERVICE_NAME` — identifies this service in traces
-> - `OTEL_EXPORTER_OTLP_ENDPOINT` — points to Jaeger's OTLP collector
-> - `OTEL_TRACES_SAMPLER` — set to `always_on` for lab visibility
-> - `OTEL_RESOURCE_ATTRIBUTES` — adds custom metadata to every span
-
-### View the Jaeger UI
-
-```bash
-pkill -f "port-forward.*8080" 2>/dev/null
-kubectl port-forward -n monitoring svc/monitoring-jaeger 8080:16686 &
-```
-
-> ⚠️ **Cloud9:** Click **Preview → Preview Running Application** to open the Jaeger UI. Select a service from the dropdown to view traces.
-
-> **Key concepts:** A **trace** represents an end-to-end request. Each trace contains **spans** — individual operations with timing, status, and metadata. In microservices, spans from different services are correlated by a shared trace ID propagated in HTTP headers.
+> ✅ **Checkpoint:** The `db-from-vault` Secret should contain `DB_USERNAME=appuser`, `DB_PASSWORD`, and `DB_HOST=db.internal.local` — matching the values seeded in Vault during cluster setup.
 
 ---
 
 ## Clean Up
 
 ```bash
-kubectl config set-context --current --namespace=default
-kubectl delete namespace obs-lab-$STUDENT_NAME
-kubectl delete prometheusrule pod-restart-alert-$STUDENT_NAME -n monitoring --ignore-not-found
-pkill -f "port-forward.*8080" 2>/dev/null
+kubectl delete namespace lab05-$STUDENT_NAME
+rm -f tls.key tls.crt /tmp/nginx.conf /tmp/app.properties
 ```
-
-> 📝 Keep the monitoring namespace installed -- it will be useful in subsequent labs.
 
 ---
 
 ## Summary
 
-- **Logging:** Log to stdout/stderr in structured JSON; use `--previous` for crashed containers
-- **Metrics:** Metrics Server powers `kubectl top`; Prometheus provides deep metric collection
-- **PromQL:** Master `rate()`, `sum() by`, and range vectors for effective monitoring
-- **Grafana:** Pre-built dashboards provide immediate cluster visibility
-- **Alerting:** PrometheusRule CRDs define alerting conditions
-- **Debugging:** Follow Events > Logs > Metrics > Describe
-- **Tracing:** OpenTelemetry env vars configure apps to send spans to Jaeger for end-to-end request visibility
+- **ConfigMaps:** Created from literals and files; consumed via `envFrom`, `valueFrom`, and volume mounts
+- **Immutable ConfigMaps:** Prevent accidental changes to production configuration; must be deleted and recreated to update
+- **Secrets:** Same consumption patterns as ConfigMaps; base64-encoded, not encrypted by default; use RBAC to restrict access and enable KMS encryption at rest
+- **Projected Volumes:** Combine ConfigMap, Secret, and Downward API sources into a single mount point
+- **External Secrets:** ESO syncs secrets from Vault into native Kubernetes Secrets via `ExternalSecret` CRDs — no secret values stored in Git
 
 ---
 
-*Lab 9 Complete — Up Next: Lab 10 — Health Checks and Probes*
+*Lab 9 Complete — Up Next: Lab 10 — Custom Resource Definitions (CRDs)*

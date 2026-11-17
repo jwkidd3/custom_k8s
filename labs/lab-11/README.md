@@ -1,280 +1,216 @@
-# Lab 11: Deployment Strategies
-### Rolling Updates, Blue-Green, Canary and Disruption Budgets
-**Intermediate Kubernetes — Module 11 of 13**
+# Lab 11: Gateway API and HTTP Routing
+### Gateways, HTTPRoutes, Host & Path Routing, and Weighted Traffic Splitting
+**Intermediate Kubernetes — Module 11 of 18**
 
 ---
 
 ## Lab Overview
 
-### Objectives
+### What You Will Do
 
-- Perform rolling updates and rollbacks
-- Implement blue-green and canary deployment patterns
-- Configure Pod Disruption Budgets
-- Detect stuck rollouts with progress deadlines
+- Deploy two sample applications behind a Gateway
+- Create a `GatewayClass` and a `Gateway` (each Gateway gets its own load balancer)
+- Route by **hostname** with **weighted traffic splitting** (80/20) via an `HTTPRoute`
+- Route by **path** (`/v1`, `/v2`) via a second `HTTPRoute`
+- Apply an egress `NetworkPolicy` to restrict outbound traffic
+
+### Why Gateway API (not Ingress)?
+
+The **Gateway API** is the next-generation, role-oriented replacement for Ingress. Instead of one shared Ingress controller + a pile of controller-specific annotations, you get typed resources:
+
+| Resource | Role | Analogy to Ingress |
+|----------|------|--------------------|
+| `GatewayClass` | cluster operator | the controller "flavor" (like an IngressClass) |
+| `Gateway` | infra/platform | the listener + **its own load balancer** |
+| `HTTPRoute` | app developer | the routing rules (host, path, weights, headers) |
+
+The big practical difference: **each `Gateway` provisions its own load balancer** (here, via Envoy Gateway) — it does **not** share the ingress-nginx controller. Routing features that needed vendor annotations on Ingress (path rewrites, traffic splitting, header matching) are first-class fields in `HTTPRoute`.
 
 ### Prerequisites
 
-- kubectl installed and configured
-- Access to a Kubernetes cluster (EKS)
 - Completion of Lab 1 with `kubectl` and cluster access configured
+- Gateway API CRDs + a Gateway controller installed (this platform runs **Envoy Gateway**)
 
-> **Duration:** ~45 minutes
+### Duration
+
+Approximately 30-40 minutes
 
 ---
 
-## Step 1: Deploy v1 of the Application
+## Environment Setup
 
 ```bash
 cd ~/environment/custom_k8s/labs/lab-11
 export STUDENT_NAME=<usernumber>
 echo "Student: $STUDENT_NAME"
-kubectl config set-context --current --namespace=default
+kubectl create namespace lab06-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab06-$STUDENT_NAME
 ```
 
-> ⚠️ **Important:** Your `$STUDENT_NAME` ensures your resources don't conflict with other students.
+Confirm the Gateway API is available and the controller is running:
 
 ```bash
-kubectl create namespace deploy-lab-$STUDENT_NAME
-
-kubectl create configmap app-v1-page \
-  --from-literal=index.html='<h1 style="color:blue">Application v1</h1><p>Version: 1.0.0</p>' \
-  -n deploy-lab-$STUDENT_NAME
+kubectl get crd gatewayclasses.gateway.networking.k8s.io
+kubectl get pods -n envoy-gateway-system
 ```
 
-Review `app-deploy-v1.yaml` — it creates a Deployment with rolling update strategy, mounting a ConfigMap for the page content.
-
-Apply and expose:
-
-```bash
-envsubst '$STUDENT_NAME' < app-deploy-v1.yaml | kubectl apply -f -
-
-# Record WHY this revision exists — it surfaces in `kubectl rollout history`.
-kubectl annotate deployment/webapp \
-  kubernetes.io/change-cause="Initial deploy: v1 (nginx 1.24)" \
-  -n deploy-lab-$STUDENT_NAME --overwrite
-
-kubectl expose deployment webapp \
-  --port=80 --target-port=80 \
-  --name=webapp-svc \
-  -n deploy-lab-$STUDENT_NAME
-
-kubectl get pods -n deploy-lab-$STUDENT_NAME -l app=webapp
-```
-
-Verify v1 is serving traffic:
-
-```bash
-kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never \
-  -n deploy-lab-$STUDENT_NAME -- curl -s webapp-svc
-```
-
-> ✅ **Checkpoint:** All pods should be Running. The curl response should show **Application v1**.
+> ⚠️ If the CRD or controller is missing, notify the instructor.
 
 ---
 
-## Step 2: Perform a Rolling Update to v2
+## Step 1: Deploy Two Sample Applications
 
 ```bash
-kubectl create configmap app-v2-page \
-  --from-literal=index.html='<h1 style="color:green">Application v2</h1><p>Version: 2.0.0</p>' \
-  -n deploy-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < app-v1.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < app-v2.yaml | kubectl apply -f -
 
-kubectl set image deployment/webapp nginx=nginx:1.25 \
-  -n deploy-lab-$STUDENT_NAME
-
-kubectl patch deployment webapp -n deploy-lab-$STUDENT_NAME --type=json \
-  -p='[{"op":"replace",
-  "path":"/spec/template/spec/volumes/0/configMap/name",
-  "value":"app-v2-page"}]'
-
-# Annotate the new revision so its reason is captured in the history.
-# (kubectl set image --record is deprecated — annotate explicitly instead.)
-kubectl annotate deployment/webapp \
-  kubernetes.io/change-cause="Rolling update to v2 (nginx 1.25 + v2 page)" \
-  -n deploy-lab-$STUDENT_NAME --overwrite
+kubectl get pods -n lab06-$STUDENT_NAME -l app=web
+kubectl get svc  -n lab06-$STUDENT_NAME
 ```
+
+> ✅ **Checkpoint:** 4 pods (2 for v1, 2 for v2) Running, and 2 ClusterIP services — `app-v1-svc` and `app-v2-svc`, both on port 80.
 
 ---
 
-## Step 3: Monitor the Rolling Update
+## Step 2: Create the Gateway
+
+A `GatewayClass` selects the controller; a `Gateway` defines a listener and gets **its own load balancer**.
 
 ```bash
-kubectl rollout status deployment/webapp -n deploy-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < gateway.yaml | kubectl apply -f -
 
-kubectl rollout history deployment/webapp -n deploy-lab-$STUDENT_NAME
+kubectl get gatewayclass lab-gateway-class-$STUDENT_NAME
+kubectl get gateway lab-gateway -n lab06-$STUDENT_NAME
 ```
 
-> ✅ **Checkpoint:** Because you annotated each change, `rollout history` shows a meaningful **CHANGE-CAUSE** for every revision:
->
-> ```
-> REVISION  CHANGE-CAUSE
-> 1         Initial deploy: v1 (nginx 1.24)
-> 2         Rolling update to v2 (nginx 1.25 + v2 page)
-> ```
->
-> Without the annotation this column is **blank** — you'd have no record of *why* each revision exists, which makes choosing a rollback target guesswork. Set `kubernetes.io/change-cause` on every change (ideally in your CI/CD pipeline); the old `kubectl ... --record` flag that used to do this automatically is **deprecated**.
-
-Verify v2 is serving:
+The load balancer takes ~1–2 minutes to provision. Wait for it and read its address:
 
 ```bash
-kubectl run curl-test2 --image=curlimages/curl --rm -it --restart=Never \
-  -n deploy-lab-$STUDENT_NAME -- curl -s webapp-svc
-
-kubectl get replicasets -n deploy-lab-$STUDENT_NAME -l app=webapp
+kubectl wait --for=condition=Programmed gateway/lab-gateway -n lab06-$STUDENT_NAME --timeout=180s
+GW=$(kubectl get gateway lab-gateway -n lab06-$STUDENT_NAME -o jsonpath='{.status.addresses[0].value}')
+echo "Gateway load balancer: $GW"
 ```
 
-> ✅ The curl response should show **Application v2**. The old ReplicaSet should have 0 replicas.
+> ✅ **Checkpoint:** `lab-gateway` is `PROGRAMMED=True` and has an `elb.amazonaws.com` address. This is **your Gateway's own** load balancer — separate from the ingress-nginx controller. (Compare: every student's Gateway gets a distinct LB.)
 
 ---
 
-## Step 4: Rollback to v1
+## Step 3: Host Routing with Weighted Traffic Splitting
+
+Create an `HTTPRoute` that matches a hostname and splits traffic **80% to v1, 20% to v2**:
 
 ```bash
-kubectl rollout undo deployment/webapp --to-revision=1 -n deploy-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < httproute.yaml | kubectl apply -f -
 
-kubectl rollout status deployment/webapp -n deploy-lab-$STUDENT_NAME
-
-kubectl run curl-test3 --image=curlimages/curl --rm -it --restart=Never \
-  -n deploy-lab-$STUDENT_NAME -- curl -s webapp-svc
-
-kubectl rollout history deployment/webapp -n deploy-lab-$STUDENT_NAME
+# Verify the weights
+kubectl get httproute app-route -n lab06-$STUDENT_NAME \
+  -o jsonpath='{.spec.rules[0].backendRefs[*].weight}{"\n"}'
 ```
 
-> ✅ The curl response should show **Application v1** again, served by the original `nginx:1.24` image. Step 2 produced two revisions (the image change, then the page change), so a plain `kubectl rollout undo` would only revert the last one — `--to-revision=1` returns the Deployment fully to v1.
+The route only matches the hostname `app-$STUDENT_NAME.lab.local` (a fake name), so send it via the `Host` header to your Gateway's LB:
+
+```bash
+# No matching hostname -> 404 from the Gateway
+curl -s -o /dev/null -w "no Host header: HTTP %{http_code}\n" http://$GW/
+
+# With the matching Host header -> watch the 80/20 split
+for i in $(seq 1 10); do curl -s -H "Host: app-$STUDENT_NAME.lab.local" http://$GW/; echo; done
+```
+
+> ✅ **Checkpoint:** Without the `Host` header you get **404**. With `Host: app-$STUDENT_NAME.lab.local`, ~8 of 10 requests return **"Hello from App V1"** and ~2 return **"Hello from App V2"** — weighted splitting, served through your Gateway's own load balancer.
 
 ---
 
-## Step 5: Implement Blue-Green Deployment
+## Step 4: Path Routing
 
-Review the three manifests: `blue-deploy.yaml` (blue Deployment), `green-deploy.yaml` (green Deployment), and `bg-service.yaml` (Service initially pointing to blue).
-
-Apply and switch traffic:
+Add a second `HTTPRoute` on the **same Gateway** that routes by **path** instead of weight — `/v1` → app-v1, `/v2` → app-v2, everything else → app-v1:
 
 ```bash
-envsubst '$STUDENT_NAME' < blue-deploy.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < green-deploy.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < bg-service.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < httproute-path.yaml | kubectl apply -f -
 
-kubectl run bg-test1 --image=curlimages/curl --rm -it --restart=Never \
-  -n deploy-lab-$STUDENT_NAME -- curl -s webapp-bg-svc
-
-# Switch traffic to green
-kubectl patch service webapp-bg-svc -n deploy-lab-$STUDENT_NAME \
-  -p '{"spec":{"selector":{"version":"green"}}}'
-
-kubectl run bg-test2 --image=curlimages/curl --rm -it --restart=Never \
-  -n deploy-lab-$STUDENT_NAME -- curl -s webapp-bg-svc
+kubectl get httproute path-route -n lab06-$STUDENT_NAME \
+  -o jsonpath='{range .spec.rules[*]}{.matches[0].path.value}{" -> "}{.backendRefs[0].name}{"\n"}{end}'
 ```
 
-> ✅ First curl shows **BLUE**, second curl shows **GREEN**. The switch is instantaneous.
+This route uses the hostname `path-$STUDENT_NAME.lab.local`. Test each path (longer prefixes win, so `/v1` and `/v2` beat the `/` default):
+
+```bash
+curl -s -H "Host: path-$STUDENT_NAME.lab.local" http://$GW/v1; echo   # App V1
+curl -s -H "Host: path-$STUDENT_NAME.lab.local" http://$GW/v2; echo   # App V2
+curl -s -H "Host: path-$STUDENT_NAME.lab.local" http://$GW/;   echo   # default -> App V1
+```
+
+> ✅ **Checkpoint:** `/v1` returns **"Hello from App V1"**, `/v2` returns **"Hello from App V2"**, and `/` falls through to **"Hello from App V1"** — all on the same Gateway, no annotations, just `HTTPRoute` path matches. Two HTTPRoutes (weighted + path) share one Gateway, dispatched by hostname.
 
 ---
 
-## Step 6: Implement Canary Deployment
+## Step 5: Egress NetworkPolicy
 
-Review the three manifests: `canary-stable.yaml` (stable Deployment, 2 replicas), `canary-new.yaml` (canary Deployment, 1 replica), and `canary-service.yaml` (Service selecting both via the shared `app` label).
+NetworkPolicies also restrict **outbound** traffic. Create one that limits egress for pods labeled `run=egress-test` to DNS and in-namespace HTTP only:
 
 ```bash
-envsubst '$STUDENT_NAME' < canary-stable.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < canary-new.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < canary-service.yaml | kubectl apply -f -
-kubectl get pods -n deploy-lab-$STUDENT_NAME -l app=webapp-canary --show-labels
+envsubst '$STUDENT_NAME' < egress-policy.yaml | kubectl apply -f -
+
+kubectl get networkpolicy restrict-egress -n lab06-$STUDENT_NAME
+kubectl describe networkpolicy restrict-egress -n lab06-$STUDENT_NAME
 ```
 
-> ✅ 3 pods total -- 2 with `track=stable` and 1 with `track=canary` (~33% canary traffic).
+> ✅ **Checkpoint:** The policy selects pods with `run=egress-test`, allows DNS (port 53) and in-namespace HTTP (port 80) egress only.
 
----
+#### Test the policy
 
-## Step 7: Verify Canary Traffic Distribution
+Deploy a pod the policy applies to (label `run=egress-test`) and confirm the **deny** — external egress is cut off the moment the policy exists:
 
 ```bash
-kubectl run traffic-test --image=curlimages/curl --rm -it --restart=Never \
-  -n deploy-lab-$STUDENT_NAME -- sh -c '
-  STABLE=0; CANARY=0
-  for i in $(seq 1 20); do
-    RESPONSE=$(curl -s webapp-canary-svc)
-    if echo "$RESPONSE" | grep -q "STABLE"; then
-      STABLE=$((STABLE+1))
-    else
-      CANARY=$((CANARY+1))
-    fi
-  done
-  echo "Stable: $STABLE / Canary: $CANARY out of 20 requests"
-'
+kubectl run egress-test --image=curlimages/curl --labels="run=egress-test" \
+  -n lab06-$STUDENT_NAME --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/egress-test -n lab06-$STUDENT_NAME --timeout=60s
+
+# BLOCKED — external egress (neither DNS nor in-namespace): hangs, then fails
+kubectl exec egress-test -n lab06-$STUDENT_NAME -- curl -s --max-time 5 https://1.1.1.1/ \
+  && echo "reached (unexpected)" || echo ">>> external egress blocked (as expected)"
+
+# ALLOWED paths the policy permits — DNS to kube-dns, and in-namespace HTTP
+kubectl exec egress-test -n lab06-$STUDENT_NAME -- nslookup kubernetes.default
 ```
 
-> ✅ Approximately `Stable: 14 / Canary: 6` (roughly 67/33 split). Results will vary.
+> ✅ **Checkpoint:** The external request **times out** — once an Egress policy exists, only the explicitly-allowed destinations are reachable, everything else is denied. (Requires a CNI that enforces NetworkPolicies, e.g. Calico.)
 
----
-
-## Step 8: Pod Disruption Budgets
-
-Review `pdb.yaml` — it creates a PodDisruptionBudget requiring at least 2 webapp pods available.
+> **Real-world note:** the policy *allows* DNS and in-namespace HTTP, but whether those allow rules take effect — and whether **ClusterIP Service** traffic is matched at all — depends on how your CNI orders NetworkPolicy vs. kube-proxy's service NAT. On EKS with the VPC CNI + Calico this can be inconsistent, so the **deterministic** takeaway is: **external egress is denied**.
 
 ```bash
-envsubst '$STUDENT_NAME' < pdb.yaml | kubectl apply -f -
-kubectl get pdb -n deploy-lab-$STUDENT_NAME
-```
-
-Test with a dry-run drain:
-
-```bash
-kubectl get pods -n deploy-lab-$STUDENT_NAME -l app=webapp -o wide
-
-# Get a node name from the output above, then dry-run drain
-NODE_NAME=$(kubectl get pods -n deploy-lab-$STUDENT_NAME -l app=webapp \
-  -o jsonpath='{.items[0].spec.nodeName}')
-
-# Dry-run only -- NEVER drain without --dry-run in a shared cluster
-kubectl drain $NODE_NAME --ignore-daemonsets \
-  --delete-emptydir-data --dry-run=client
+kubectl delete pod egress-test -n lab06-$STUDENT_NAME
 ```
 
 ---
 
-## Step 9: Configure Progress Deadline
-
-Trigger a stuck rollout with a non-existent image:
+## Step 6: Clean Up
 
 ```bash
-kubectl patch deployment webapp -n deploy-lab-$STUDENT_NAME \
-  -p '{"spec":{"progressDeadlineSeconds":60}}'
+# Delete the namespace first — this removes the Gateway and both HTTPRoutes.
+# The GatewayClass carries a "gateway-exists" finalizer while any Gateway
+# references it, so deleting the namespace first lets the GatewayClass delete
+# complete instead of hanging.
+kubectl delete namespace lab06-$STUDENT_NAME
 
-kubectl set image deployment/webapp nginx=nginx:nonexistent-tag \
-  -n deploy-lab-$STUDENT_NAME
-
-# Will report "exceeded its progress deadline" after 60s
-kubectl rollout status deployment/webapp -n deploy-lab-$STUDENT_NAME --timeout=90s
-```
-
-Recover:
-
-```bash
-kubectl rollout undo deployment/webapp -n deploy-lab-$STUDENT_NAME
-kubectl rollout status deployment/webapp -n deploy-lab-$STUDENT_NAME
-```
-
-> ✅ After rollback, all pods should be Running and Ready.
-
----
-
-## Step 10: Clean Up
-
-```bash
-kubectl delete namespace deploy-lab-$STUDENT_NAME
+# Now remove the cluster-scoped GatewayClass
+kubectl delete gatewayclass lab-gateway-class-$STUDENT_NAME --timeout=60s 2>/dev/null
 ```
 
 ---
 
-## Key Takeaways
+## Summary
 
-- **Rolling Updates** -- gradual replacement with `maxSurge`/`maxUnavailable` control
-- **Blue-Green** -- instant traffic switch via service selector, requires double resources
-- **Canary** -- gradual traffic shift using replica ratios
-- **Pod Disruption Budgets** -- protects availability during voluntary disruptions
-- **Progress Deadline** -- detects stuck rollouts automatically
+| Concept | Resource | What it does |
+|---------|----------|--------------|
+| Controller selection | `GatewayClass` | Picks the Gateway controller (Envoy Gateway) |
+| Listener + LB | `Gateway` | One listener (`:80`) and **its own load balancer** |
+| Host + weighted routing | `HTTPRoute` | Matches a hostname, splits 80/20 across v1/v2 |
+| Path routing | `HTTPRoute` | `/v1`, `/v2`, `/` dispatched to different backends |
+| Outbound restriction | `NetworkPolicy` (Egress) | Denies external egress; allows DNS + in-namespace |
 
----
-
-*Lab 11 Complete — Up Next: Lab 12 — Helm and Templating*
+**Key takeaways:**
+- The **Gateway API** replaces Ingress with typed, role-separated resources — no controller-specific annotations.
+- Each **`Gateway` has its own load balancer**; you reach it directly, not through ingress-nginx.
+- **`HTTPRoute`** does host matching, path matching, and weighted traffic splitting as first-class fields.
+- An **Egress NetworkPolicy** is default-deny once it exists — only what you allow gets out.

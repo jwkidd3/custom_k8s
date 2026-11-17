@@ -1,6 +1,6 @@
-# Lab 7: RBAC and Pod Security
-### Roles, Bindings, Pod Security Standards, and SecurityContexts
-**Intermediate Kubernetes — Module 7 of 13**
+# Lab 7: Storage and StatefulSets
+### Persistent Volumes, Claims, and Stateful Workloads
+**Intermediate Kubernetes — Module 7 of 18**
 
 ---
 
@@ -8,17 +8,20 @@
 
 ### Objectives
 
-- Explore existing ClusterRoles and bindings
-- Create Roles, RoleBindings, and ServiceAccounts
-- Apply Pod Security Standards and SecurityContexts
-- Test RBAC permission boundaries
+- Explore StorageClasses and provisioners
+- Create PersistentVolumeClaims and mount volumes in pods
+- Deploy and manage StatefulSets with stable identities
+- Scale StatefulSets
+- *Optional:* Expand volumes
 
 ### Prerequisites
 
+- Access to the EKS cluster via `kubectl`
 - Completion of Lab 1 with `kubectl` and cluster access configured
-- kubectl with cluster-admin access on a running EKS cluster
 
-> **Duration:** ~45-55 minutes
+> **Duration:** ~40-50 minutes
+>
+> **Note:** Step 9 is an optional stretch goal for students who finish early.
 
 ---
 
@@ -31,204 +34,222 @@ echo "Student: $STUDENT_NAME"
 kubectl config set-context --current --namespace=default
 ```
 
----
-
-## Step 1: Explore Existing ClusterRoles
-
-Create a namespace and examine the built-in ClusterRoles:
-
-```bash
-kubectl create namespace lab07-$STUDENT_NAME
-
-kubectl get clusterroles | head -20
-
-# Examine key built-in ClusterRoles
-kubectl describe clusterrole admin
-kubectl describe clusterrole edit
-kubectl describe clusterrole view
-```
+> ⚠️ **Important:** This shared cluster is used by all 22 students. Your `$STUDENT_NAME` ensures your resources don't conflict with others.
 
 ---
 
-## Step 2: Create a Namespace-Scoped Role and Bind It
-
-Create a Role that allows read-only access to pods:
-
-<!-- Creates a Role granting get/list/watch on pods and pods/log -->
-
-Apply the manifest and create a ServiceAccount:
+## Step 1: Explore StorageClasses
 
 ```bash
-envsubst '$STUDENT_NAME' < pod-reader-role.yaml | kubectl apply -f -
-kubectl create serviceaccount pod-viewer -n lab07-$STUDENT_NAME
+kubectl create namespace lab03-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab03-$STUDENT_NAME
+kubectl get storageclass
+kubectl describe storageclass gp2
 ```
 
-<!-- Creates a RoleBinding connecting the pod-viewer SA to the pod-reader Role -->
+> ✅ **Checkpoint:** You should see a `gp2` StorageClass with `WaitForFirstConsumer` binding mode, which defers volume creation until a pod needs it.
 
+---
+
+## Step 2: Create a PersistentVolumeClaim
+
+<!-- Creates a 1Gi ReadWriteOnce PVC using gp2 StorageClass -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < pod-reader-binding.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-pvc.yaml | kubectl apply -f -
+kubectl get pvc -n lab03-$STUDENT_NAME
 ```
+
+> 📝 **Note:** Status will be Pending until a pod mounts this PVC.
 
 ---
 
-## Step 3: Test Permissions with kubectl auth can-i
+## Step 3: Deploy a Pod with the PVC Mounted
 
-```bash
-kubectl auth can-i --list -n lab07-$STUDENT_NAME \
-  --as=system:serviceaccount:lab07-$STUDENT_NAME:pod-viewer
-```
-
-> ✅ **Checkpoint:** The lines **from your Role** are `pods` → `[get list watch]` and `pods/log` → `[get]`.
->
-> You will also see entries you did *not* grant — the `selfsubject*reviews` APIs and a list of non-resource URLs (`/healthz`, `/version`, `/api`, `/apis`, `/openapi`, `/openid/v1/jwks`, …). Those are the **defaults every authenticated identity gets**, via the built-in `system:basic-user`, `system:discovery`, and `system:public-info-viewer` ClusterRoleBindings. `kubectl auth can-i --list` prints the **union** of *all* applicable rules, not just your Role — so those discovery/self-review entries always appear. The key point still holds: your ServiceAccount has **no write access to anything**.
->
-> The `Warning: the list may be incomplete: webhook authorizer does not support user rule resolution` line is expected on EKS — the AWS authorizer can't enumerate rules, so the list reflects Kubernetes RBAC only.
-
----
-
-## Step 4: Deploy a Pod Using the ServiceAccount
-
-<!-- Creates a pod running kubectl with the pod-viewer ServiceAccount -->
-
+<!-- Creates a data-writer pod that writes a timestamp to the PVC -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < rbac-test-pod.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/rbac-test -n lab07-$STUDENT_NAME --timeout=60s
-
-# This should SUCCEED
-kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl get pods -n lab07-$STUDENT_NAME
-
-# This should FAIL with Forbidden
-kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl create deployment \
-  test --image=nginx -n lab07-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < lab-writer-pod.yaml | kubectl apply -f -
+kubectl get pod data-writer -n lab03-$STUDENT_NAME -w
 ```
 
-> ✅ **Checkpoint:** `get pods` succeeds; `create deployment` fails with Forbidden.
+Verify the volume is bound and data was written:
+
+```bash
+kubectl get pvc -n lab03-$STUDENT_NAME
+kubectl exec data-writer -n lab03-$STUDENT_NAME -- cat /data/testfile.txt
+```
+
+> ✅ **Checkpoint:** PVC status should be `Bound` and the file should contain your timestamp.
+
+Examine the dynamically created PV:
+
+```bash
+PV_NAME=$(kubectl get pvc lab-data-pvc -n lab03-$STUDENT_NAME \
+  -o jsonpath='{.spec.volumeName}')
+kubectl describe pv $PV_NAME
+```
+
+> ✅ **Checkpoint:** Note the PV is bound to a specific AWS availability zone via Node Affinity.
 
 ---
 
-## Step 5: Create a ClusterRole for Cross-Namespace Access
+## Step 4: Verify Data Persistence
 
-<!-- Creates a ClusterRole granting read access to pods, services, deployments, and replicasets -->
-
-Apply the manifest and create a ServiceAccount:
+Delete the pod, create a reader pod, and verify data survives:
 
 ```bash
-envsubst '$STUDENT_NAME' < cluster-reader-role.yaml | kubectl apply -f -
-kubectl create serviceaccount cluster-viewer -n lab07-$STUDENT_NAME
+kubectl delete pod data-writer -n lab03-$STUDENT_NAME
+kubectl get pvc -n lab03-$STUDENT_NAME
 ```
 
-Bind it with a ClusterRoleBinding:
-
-<!-- Creates a ClusterRoleBinding connecting the cluster-viewer SA to the ClusterRole -->
-
+<!-- Creates a data-reader pod that reads from the same PVC -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < cluster-reader-binding.yaml | kubectl apply -f -
-
-# Test cross-namespace read (should be YES)
-kubectl auth can-i list pods -n kube-system \
-  --as=system:serviceaccount:lab07-$STUDENT_NAME:cluster-viewer
-
-# Test delete (should be NO)
-kubectl auth can-i delete pods -n kube-system \
-  --as=system:serviceaccount:lab07-$STUDENT_NAME:cluster-viewer
+envsubst '$STUDENT_NAME' < lab-reader-pod.yaml | kubectl apply -f -
+kubectl wait --for=condition=Ready pod/data-reader -n lab03-$STUDENT_NAME --timeout=120s
+kubectl logs data-reader -n lab03-$STUDENT_NAME
 ```
 
-> ✅ **Checkpoint:** `list pods` returns `yes` in any namespace; `delete pods` returns `no`.
+> ✅ **Checkpoint:** The original timestamp from `data-writer` should appear, proving data persists across pod deletion.
 
 ---
 
-## Step 6: Apply Pod Security Standards
+## Step 5: Deploy a StatefulSet
 
-Create a namespace with the **restricted** Pod Security Standard:
+Create the headless Service and StatefulSet:
+
+<!-- Creates a headless Service for StatefulSet DNS -->
+<!-- Creates a 3-replica StatefulSet with per-pod PVCs -->
+Apply the manifests:
 
 ```bash
-kubectl create namespace lab07-restricted-$STUDENT_NAME
-
-kubectl label namespace lab07-restricted-$STUDENT_NAME \
-  pod-security.kubernetes.io/enforce=restricted \
-  pod-security.kubernetes.io/enforce-version=latest \
-  pod-security.kubernetes.io/warn=restricted \
-  pod-security.kubernetes.io/warn-version=latest \
-  pod-security.kubernetes.io/audit=restricted \
-  pod-security.kubernetes.io/audit-version=latest
+envsubst '$STUDENT_NAME' < lab-headless-svc.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < lab-statefulset.yaml | kubectl apply -f -
+kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
 ```
 
+> ✅ **Checkpoint:** Pods are created sequentially: `web-0` must be Running before `web-1` starts. Press `Ctrl+C` once all three are Running.
+
 ---
 
-## Step 7: Test Pod Security -- Violations
-
-Try deploying pods that violate the restricted profile:
-
-<!-- Creates a pod with privileged: true (should be rejected) -->
-
-<!-- Creates a pod running as root user (should be rejected) -->
-
-Apply both manifests:
+## Step 6: Verify Stable Identities
 
 ```bash
-# Both should FAIL under the restricted profile
-envsubst '$STUDENT_NAME' < privileged-pod.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < root-pod.yaml | kubectl apply -f -
+kubectl get pods -n lab03-$STUDENT_NAME -l app=web -o wide
+kubectl get pvc -n lab03-$STUDENT_NAME
+
+# Test DNS resolution for a StatefulSet pod
+kubectl run dns-test --image=busybox:1.36 -n lab03-$STUDENT_NAME --rm -it \
+  --restart=Never -- nslookup web-0.web-headless.lab03-$STUDENT_NAME.svc.cluster.local
 ```
 
-> ✅ **Checkpoint:** Both pods are blocked. The privileged pod is rejected by two independent admission layers — expect a Pod Security error (`violates PodSecurity "restricted:latest"`) or the cluster Kyverno policy message (`Privileged containers are not allowed.`). The root pod fails the `runAsNonRoot` check. Either message means the guardrails are working.
+> ✅ **Checkpoint:** Each pod has a predictable name (`web-0`, `web-1`, `web-2`) and its own PVC (`web-data-web-0`, etc.). DNS resolves each pod individually.
 
 ---
 
-## Step 8: Deploy a Compliant Secure Pod
+## Step 7: Test Data Persistence Per Replica
 
-<!-- Creates a pod that meets the restricted security profile (non-root, read-only FS, no capabilities) -->
-
-Apply the manifest:
+Write unique content to each pod's volume:
 
 ```bash
-envsubst '$STUDENT_NAME' < secure-pod.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/secure-app \
-  -n lab07-restricted-$STUDENT_NAME --timeout=60s
+kubectl exec web-0 -n lab03-$STUDENT_NAME -- \
+  sh -c 'echo "Hello from web-0" > /usr/share/nginx/html/index.html'
+kubectl exec web-1 -n lab03-$STUDENT_NAME -- \
+  sh -c 'echo "Hello from web-1" > /usr/share/nginx/html/index.html'
+kubectl exec web-2 -n lab03-$STUDENT_NAME -- \
+  sh -c 'echo "Hello from web-2" > /usr/share/nginx/html/index.html'
 
-# Verify security settings inside the pod
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- id
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- touch /test-file
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- touch /tmp/test-file
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- \
-  cat /proc/1/status | grep -i cap
+for i in 0 1 2; do
+    echo "--- web-$i ---"
+    kubectl exec web-$i -n lab03-$STUDENT_NAME -- curl -s localhost
+done
 ```
 
-> ✅ **Checkpoint:**
-> - `id` --> `uid=1000 gid=1000 groups=1000`
-> - `touch /test-file` --> **Read-only file system** error
-> - `touch /tmp/test-file` --> succeeds
-> - `CapEff` --> `0000000000000000` (no capabilities)
-
----
-
----
-
-## Step 9: Clean Up
+Delete a pod and verify its data survives:
 
 ```bash
-kubectl delete clusterrolebinding cluster-pod-reader-binding-$STUDENT_NAME
-kubectl delete clusterrole cluster-pod-reader-$STUDENT_NAME
+kubectl delete pod web-1 -n lab03-$STUDENT_NAME
+kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
 
-kubectl delete namespace lab07-$STUDENT_NAME
-kubectl delete namespace lab07-restricted-$STUDENT_NAME
+# Once web-1 is Running again:
+kubectl exec web-1 -n lab03-$STUDENT_NAME -- curl -s localhost
+```
+
+> ✅ **Checkpoint:** The recreated `web-1` still serves "Hello from web-1" because it reattached to the same PVC.
+
+---
+
+## Step 8: Scale the StatefulSet
+
+```bash
+# Scale up to 5 replicas (ordered creation)
+kubectl scale statefulset web -n lab03-$STUDENT_NAME --replicas=5
+kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+
+# Verify new PVCs
+kubectl get pvc -n lab03-$STUDENT_NAME
+
+# Scale down to 2 replicas (reverse order termination)
+kubectl scale statefulset web -n lab03-$STUDENT_NAME --replicas=2
+kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+
+# PVCs persist after scale-down
+kubectl get pvc -n lab03-$STUDENT_NAME
+```
+
+> ⚠️ **Important:** PVCs are **not** deleted when a StatefulSet scales down. This protects data and allows reattachment on scale-up.
+
+---
+
+---
+
+## Optional Stretch Goals
+
+> These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
+
+### Step 9: Test Volume Expansion
+
+```bash
+kubectl get storageclass gp2 -o jsonpath='{.allowVolumeExpansion}'
+
+# gp2 does not allow expansion by default — enable it first
+# (cluster-wide setting; safe to run even if a classmate already did)
+kubectl patch storageclass gp2 -p '{"allowVolumeExpansion": true}'
+
+# Expand the PVC for web-0 from 1Gi to 2Gi
+kubectl patch pvc web-data-web-0 -n lab03-$STUDENT_NAME \
+  -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
+
+kubectl get pvc web-data-web-0 -n lab03-$STUDENT_NAME -w
+```
+
+> ⚠️ Volume expansion is a one-way operation -- you cannot shrink a PVC after expanding it.
+
+---
+
+## Step 10: Clean Up
+
+```bash
+kubectl config set-context --current --namespace=default
+kubectl delete statefulset web -n lab03-$STUDENT_NAME
+kubectl delete pvc --all -n lab03-$STUDENT_NAME
+kubectl delete namespace lab03-$STUDENT_NAME
 ```
 
 ---
 
 ## Summary
 
-- RBAC uses an additive model -- permissions are granted, never denied
-- Roles are namespace-scoped; ClusterRoles are cluster-scoped; bind them with RoleBindings or ClusterRoleBindings
-- Pod Security Standards (restricted, baseline, privileged) enforce security profiles at the namespace level
-- SecurityContext settings (`runAsNonRoot`, `readOnlyRootFilesystem`, `drop: ALL`) provide defense-in-depth
+- `WaitForFirstConsumer` ensures EBS volumes are created in the correct availability zone
+- PVCs persist independently of pods -- data survives pod deletion and rescheduling
+- StatefulSets provide stable network identity, ordered operations, and per-replica storage
+- PVCs are retained on scale-down to protect data
+- Volume expansion is supported but is a one-way operation
 
 ---
 
-*Lab 7 Complete — Up Next: Lab 8 — Network Policies*
+*Lab 7 Complete — Up Next: Lab 8 — Services and Service Discovery*

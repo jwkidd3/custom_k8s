@@ -1,6 +1,6 @@
-# Lab 8: Network Policies
-### Controlling Pod-to-Pod Communication with NetworkPolicy Resources
-**Intermediate Kubernetes — Module 8 of 13**
+# Lab 8: Services and Service Discovery
+### ClusterIP, NodePort, Headless Services, and DNS-Based Discovery
+**Intermediate Kubernetes — Module 8 of 18**
 
 ---
 
@@ -8,21 +8,16 @@
 
 ### Objectives
 
-- Deploy a three-tier application and verify default connectivity
-- Apply a default-deny ingress NetworkPolicy
-- Create targeted ingress policies per tier
-- Debug a broken NetworkPolicy
-- *Optional:* Apply egress deny-all and selective allow policies
-- *Optional:* Use namespace selectors for cross-namespace access
+- Deploy a multi-tier application with backend and frontend Deployments
+- Create ClusterIP and NodePort Services
+- Test DNS-based service discovery and examine Endpoints/EndpointSlices
+- Compare headless vs. ClusterIP Service DNS behavior
 
 ### Prerequisites
 
 - Completion of Lab 1 with `kubectl` and cluster access configured
-- CNI with NetworkPolicy support (Calico or Cilium)
 
-> **Duration:** ~30-40 minutes
->
-> **Note:** Steps 9-10 are optional stretch goals for students who finish early.
+> **Duration:** ~30 minutes
 
 ---
 
@@ -35,274 +30,205 @@ echo "Student: $STUDENT_NAME"
 kubectl config set-context --current --namespace=default
 ```
 
+> ⚠️ **Important:** This shared cluster is used by all 22 students. Your `$STUDENT_NAME` ensures your resources don't conflict with others.
+
 ---
 
-## Step 1: Deploy a Three-Tier Application
+## Step 1: Deploy a Multi-Tier Application
 
 ```bash
-kubectl create namespace lab08-$STUDENT_NAME
+kubectl create namespace lab04-$STUDENT_NAME
 ```
 
-### Deploy the Database Tier
-
-<!-- Creates a database Pod and Service -->
-
-Apply the manifest:
-
-```bash
-envsubst '$STUDENT_NAME' < database.yaml | kubectl apply -f -
-```
-
-### Deploy the Backend and Frontend Tiers
-
-<!-- Creates backend and frontend Pods and Services -->
-
+<!-- Creates backend Deployment (3 replicas of httpbin with readiness probe) -->
+<!-- Creates frontend Deployment (2 replicas of nginx) -->
 Apply the manifests:
 
 ```bash
-envsubst '$STUDENT_NAME' < backend.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < frontend.yaml | kubectl apply -f -
-
-kubectl wait --for=condition=Ready pod --all -n lab08-$STUDENT_NAME --timeout=60s
-kubectl get pods -n lab08-$STUDENT_NAME -o wide --show-labels
+envsubst '$STUDENT_NAME' < backend-deployment.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < frontend-deployment.yaml | kubectl apply -f -
+kubectl get pods -n lab04-$STUDENT_NAME -o wide
 ```
+
+> ✅ **Checkpoint:** You should have 5 pods running -- 3 backend and 2 frontend, all 1/1 Ready.
 
 ---
 
-## Step 2: Verify Default Connectivity
+## Step 2: Create a ClusterIP Service for the Backend
 
-Confirm all pods can communicate (all should succeed):
-
-```bash
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
-
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
-
-kubectl exec database -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
-```
-
----
-
-## Step 3: Apply Default Deny-All Ingress Policy
-
-<!-- Creates a NetworkPolicy that denies all ingress traffic in the namespace -->
-
+<!-- Creates a ClusterIP Service selecting backend pods on port 80 -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < deny-all-ingress.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < backend-svc.yaml | kubectl apply -f -
+kubectl get svc backend-svc -n lab04-$STUDENT_NAME
+kubectl describe svc backend-svc -n lab04-$STUDENT_NAME
 ```
+
+> ✅ **Checkpoint:** The `describe` output should list Endpoints matching all three backend pod IPs.
 
 ---
 
-## Step 4: Verify Isolation
+## Step 3: Test DNS-Based Service Discovery
 
 ```bash
-# All should FAIL / timeout
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
-echo "Exit code: $?"
+FRONTEND_POD=$(kubectl get pod -n lab04-$STUDENT_NAME -l tier=web \
+  -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec backend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
-echo "Exit code: $?"
+# Install tools in the nginx container
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
+  apt-get update -qq && kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
+  apt-get install -y -qq curl bind9-dnsutils > /dev/null
 
-kubectl exec database -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
-echo "Exit code: $?"
+# Test DNS resolution
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- nslookup backend-svc
+
+# Curl the backend through the Service
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- curl -s backend-svc/ip
 ```
 
-> ✅ **Checkpoint:** All curl commands timeout with a non-zero exit code.
+> ✅ **Checkpoint:** `nslookup` resolves `backend-svc` to its ClusterIP, and `curl` returns a JSON response from a backend pod. (The `/ip` endpoint reports the caller's source IP, so it stays the same across requests — the Service still load-balances each new connection across the backend pods behind that single ClusterIP.)
 
 ---
 
-## Step 5: Allow Frontend to Backend Communication
+## Step 4: Examine DNS Records in Detail
 
-<!-- Creates a NetworkPolicy allowing ingress to backend from frontend on port 80 -->
+```bash
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
+  nslookup backend-svc.lab04-$STUDENT_NAME.svc.cluster.local
 
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- cat /etc/resolv.conf
+```
+
+DNS resolution formats:
+
+| Format | Example |
+|--------|---------|
+| Short name (same namespace) | `backend-svc` |
+| Namespace-qualified | `backend-svc.lab04-$STUDENT_NAME` |
+| FQDN | `backend-svc.lab04-$STUDENT_NAME.svc.cluster.local` |
+
+> ✅ **Checkpoint:** The `resolv.conf` should show search domains including your namespace.
+
+---
+
+## Step 5: Explore Endpoints and EndpointSlices
+
+**Endpoints** are the original API — a single object listing all pod IPs for a Service. **EndpointSlices** are the newer replacement — they split the list into smaller chunks (max 100 per slice), which scales better for large Services and reduces API traffic when pods change.
+
+```bash
+# Endpoints: one object with all pod IPs in a flat list
+kubectl get endpoints backend-svc -n lab04-$STUDENT_NAME
+kubectl get endpoints backend-svc -n lab04-$STUDENT_NAME -o yaml | grep -A 2 "addresses:"
+
+# EndpointSlices: sharded by addressType, with conditions per endpoint
+kubectl get endpointslices -n lab04-$STUDENT_NAME \
+  -l kubernetes.io/service-name=backend-svc
+kubectl get endpointslices -n lab04-$STUDENT_NAME \
+  -l kubernetes.io/service-name=backend-svc -o yaml | grep -A 5 "endpoints:"
+```
+
+> **Key difference:** Endpoints lists IPs only. EndpointSlices include per-pod `ready`/`serving`/`terminating` conditions, node name, and zone — giving kube-proxy richer routing information.
+
+Scale the backend and watch Endpoints change:
+
+```bash
+# In one terminal, watch endpoints
+kubectl get endpoints backend-svc -n lab04-$STUDENT_NAME -w
+
+# In another terminal, scale down then back up
+kubectl scale deployment backend -n lab04-$STUDENT_NAME --replicas=1
+kubectl scale deployment backend -n lab04-$STUDENT_NAME --replicas=3
+```
+
+> ✅ **Checkpoint:** Endpoints update dynamically as pods scale. Both Endpoints and EndpointSlices reflect the same pod IPs, but EndpointSlices show additional metadata per endpoint.
+
+---
+
+## Step 6: Create a NodePort Service
+
+<!-- Creates a NodePort Service for frontend pods on port 80 -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < allow-frontend-to-backend.yaml | kubectl apply -f -
-
-# Frontend -> Backend (should now SUCCEED)
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
-
-# Database -> Backend (should still FAIL)
-kubectl exec database -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+envsubst '$STUDENT_NAME' < frontend-nodeport.yaml | kubectl apply -f -
+kubectl get svc frontend-nodeport -n lab04-$STUDENT_NAME
+NODE_PORT=$(kubectl get svc frontend-nodeport -n lab04-$STUDENT_NAME -o jsonpath='{.spec.ports[0].nodePort}')
+echo "NodePort assigned: $NODE_PORT"
 ```
 
-> ✅ **Checkpoint:** Frontend to backend succeeds; database to backend times out.
+> ⚠️ **Note:** In EKS, node security groups may block NodePort traffic by default. NodePort is primarily for development -- production uses LoadBalancer or Ingress.
 
 ---
 
-## Step 6: Allow Backend to Database Communication
+## Step 7: Create a Headless Service
 
-<!-- Creates a NetworkPolicy allowing ingress to database from backend on port 80 -->
-
+<!-- Creates a headless Service (clusterIP: None) for direct pod IP resolution -->
 Apply the manifest:
 
 ```bash
-envsubst '$STUDENT_NAME' < allow-backend-to-database.yaml | kubectl apply -f -
-
-# Backend -> Database (should now SUCCEED)
-kubectl exec backend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
-
-# Frontend -> Database (should still FAIL)
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+envsubst '$STUDENT_NAME' < backend-headless.yaml | kubectl apply -f -
 ```
 
-> ✅ **Checkpoint:** Backend to database succeeds; frontend to database times out.
+Compare DNS responses between normal and headless Services:
+
+```bash
+# ClusterIP Service - returns the virtual IP
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
+  dig backend-svc.lab04-$STUDENT_NAME.svc.cluster.local +short
+
+# Headless Service - returns individual pod IPs
+kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
+  dig backend-headless.lab04-$STUDENT_NAME.svc.cluster.local +short
+```
+
+> ✅ **Checkpoint:** ClusterIP returns 1 virtual IP. Headless returns all pod IPs directly, letting the client choose which pod to connect to.
 
 ---
 
-## Step 7: Test the Complete Policy Set
+## Optional Stretch Goal: LoadBalancer Service
+
+Expose the frontend through an AWS load balancer:
 
 ```bash
-echo "=== ALLOWED PATHS ==="
-echo -n "Frontend -> Backend: "
-kubectl exec frontend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
-  -w "%{http_code}" --max-time 3 \
-  http://backend:80 2>/dev/null || echo "BLOCKED"
+envsubst '$STUDENT_NAME' < frontend-lb.yaml | kubectl apply -f -
 
-echo -n "Backend -> Database: "
-kubectl exec backend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
-  -w "%{http_code}" --max-time 3 \
-  http://database:80 2>/dev/null || echo "BLOCKED"
-
-echo ""
-echo "=== BLOCKED PATHS ==="
-echo -n "Frontend -> Database: "
-kubectl exec frontend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
-  -w "%{http_code}" --max-time 3 \
-  http://database:80 2>/dev/null || echo "BLOCKED"
-
-echo -n "Database -> Frontend: "
-kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
-  -w "%{http_code}" --max-time 3 \
-  http://frontend:80 2>/dev/null || echo "BLOCKED"
-
-echo -n "Database -> Backend: "
-kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
-  -w "%{http_code}" --max-time 3 \
-  http://backend:80 2>/dev/null || echo "BLOCKED"
+# Wait 2-3 minutes for AWS to provision the load balancer, then:
+kubectl get svc frontend-lb -n lab04-$STUDENT_NAME
+LB_HOST=$(kubectl get svc frontend-lb -n lab04-$STUDENT_NAME \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -s --max-time 10 http://$LB_HOST | head -5
 ```
 
-> ✅ **Checkpoint:** Frontend->Backend: 200, Backend->Database: 200, all others: BLOCKED.
+> ⚠️ **Each LoadBalancer Service provisions a real AWS load balancer (billed hourly).** Delete it as soon as you've tested it:
+
+```bash
+kubectl delete svc frontend-lb -n lab04-$STUDENT_NAME
+```
 
 ---
 
-## Step 8: Debug a Broken Policy
-
-First deploy a small client pod we'll reuse to test reachability. Keep it **running** (don't use a throwaway `--rm` pod) — a cold pod's first DNS lookup + connection can take several seconds and a tight `curl` timeout would look like a policy failure when it isn't:
+## Step 8: Clean Up
 
 ```bash
-kubectl run test-client --image=curlimages/curl -n lab08-$STUDENT_NAME \
-  --restart=Never --command -- sleep 3600
-kubectl wait --for=condition=Ready pod/test-client -n lab08-$STUDENT_NAME --timeout=60s
-```
-
-Now apply this intentionally broken policy and test from the client:
-
-<!-- Creates a NetworkPolicy with two intentional bugs for debugging practice -->
-
-```bash
-envsubst '$STUDENT_NAME' < broken-policy.yaml | kubectl apply -f -
-
-kubectl exec test-client -n lab08-$STUDENT_NAME -- \
-  curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
-  http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
-```
-
-> ⚠️ **Result: `HTTP 000` (the request times out).** Two bugs: (1) `from.podSelector` matches `tier: frontend` (self-referencing) -- should be `from: []` to allow all sources. (2) Port is `8080` but the frontend listens on `80`.
-
-### Fix the Broken Policy
-
-<!-- Creates the corrected NetworkPolicy (from: [] and port: 80) -->
-
-Apply the corrected policy and re-test with the **same** client pod:
-
-```bash
-envsubst '$STUDENT_NAME' < fixed-policy.yaml | kubectl apply -f -
-
-kubectl exec test-client -n lab08-$STUDENT_NAME -- \
-  curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
-  http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
-```
-
-> ✅ **Checkpoint:** The same client now gets **`HTTP 200`** — the fixed policy (`from: []`, port `80`) allows traffic from any source on the port the frontend actually serves. (`-o /dev/null -w "HTTP %{http_code}"` prints a clear status code instead of the raw HTML page.)
-
----
-
----
-
-## Optional Stretch Goals
-
-> These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
-
-### Step 9: Egress Policies
-
-Apply a default deny-all egress policy, then selectively allow DNS:
-
-```bash
-# Deny all outbound traffic
-envsubst '$STUDENT_NAME' < deny-all-egress.yaml | kubectl apply -f -
-
-# Verify — outbound requests should now fail
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
-echo "Exit code: $?"
-```
-
-```bash
-# Allow DNS resolution (UDP port 53)
-envsubst '$STUDENT_NAME' < allow-dns-egress.yaml | kubectl apply -f -
-
-kubectl describe networkpolicy allow-dns-egress -n lab08-$STUDENT_NAME
-```
-
-> ✅ **Checkpoint:** The deny-all-egress policy blocks all outbound traffic. The allow-dns-egress policy permits DNS resolution on port 53.
-
----
-
-### Step 10: Namespace-Based Policy
-
-Allow ingress from a monitoring namespace:
-
-```bash
-envsubst '$STUDENT_NAME' < allow-monitoring-ingress.yaml | kubectl apply -f -
-
-kubectl describe networkpolicy allow-monitoring-ingress -n lab08-$STUDENT_NAME
-```
-
-> ✅ **Checkpoint:** The policy uses a `namespaceSelector` with `purpose: monitoring` to allow ingress on port 80 from pods in monitoring namespaces.
-
----
-
-## Step 11: Clean Up
-
-```bash
-kubectl delete namespace lab08-$STUDENT_NAME
+kubectl config set-context --current --namespace=default
+kubectl delete namespace lab04-$STUDENT_NAME
 ```
 
 ---
 
 ## Summary
 
-- Kubernetes defaults to allowing all pod-to-pod communication -- NetworkPolicies add restrictions
-- Start with a default deny-all policy, then selectively allow required traffic
-- NetworkPolicies are additive -- multiple policies combine their allowed paths
-- Use `podSelector` and labels to precisely control which pods can communicate
-- **Egress policies** control outbound traffic -- always allow DNS (port 53) when restricting egress
-- **Namespace selectors** enable cross-namespace communication rules (e.g., monitoring access)
+| Service Type | Scope | Use Case |
+|-------------|-------|----------|
+| **ClusterIP** | Internal only | Service-to-service communication |
+| **NodePort** | External via node IP | Development and testing |
+| **Headless** | Internal, no VIP | StatefulSets, direct pod access |
+
+- DNS is the primary discovery mechanism (short names within namespace, FQDN across namespaces)
+- Endpoints track ready pod IPs dynamically as pods scale
+- Always configure readiness probes so only healthy pods receive traffic
 
 ---
 
-*Lab 8 Complete — Up Next: Lab 9 — Observability*
+*Lab 8 Complete — Up Next: Lab 9 — ConfigMaps and Secrets*

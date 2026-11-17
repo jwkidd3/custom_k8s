@@ -80,9 +80,14 @@
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="title-slide">
                 <h1>&#128640; Kubernetes for Application Developers</h1>
                 <h2>Why We Use It</h2>
-                <h3>Intermediate Kubernetes &mdash; Module 1 of 13</h3>
-                                <div class="module-progress">
+                <h3>Intermediate Kubernetes &mdash; Module 1 of 18</h3>
+                <div class="module-progress">
                     <div class="step active"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
+                    <div class="step"></div>
                     <div class="step"></div>
                     <div class="step"></div>
                     <div class="step"></div>
@@ -464,7 +469,7 @@
                 <div class="key-point">
                     <strong>Think of it as:</strong> A stable address that always routes to healthy pods.
                 </div>
-                <aside class="notes">The selector matches labels on pods. Kubernetes updates endpoints as pods come and go. Covered in depth in Module 4.</aside>
+                <aside class="notes">The selector matches labels on pods. Kubernetes updates endpoints as pods come and go. Covered in depth in Module 8.</aside>
             </section>
 
             <!-- Section Divider: Declarative -->
@@ -731,7 +736,7 @@
                 <div class="key-point">
                     <strong>Why it matters:</strong> the gp3 StorageClass, Pod IPs, and NetworkPolicies you'll use in later labs are delivered by these plug-in drivers &mdash; not the Kubernetes core.
                 </div>
-                <aside class="notes">CRI/CNI/CSI keep the core small and vendor-neutral — the same manifests run on EKS, GKE, or kind; only the drivers differ. This ties directly to storage (Lab 3), network policy (Lab 8), and the CNI.</aside>
+                <aside class="notes">CRI/CNI/CSI keep the core small and vendor-neutral — the same manifests run on EKS, GKE, or kind; only the drivers differ. This ties directly to storage (Lab 7), network policy (Lab 13), and the CNI.</aside>
             </section>
 
             <!-- Section Divider: EKS Context -->
@@ -819,7 +824,7 @@
                     <li><strong>ECR</strong> — scanned container images</li>
                     <li><strong>Observability</strong> — Prometheus, Grafana, Splunk</li>
                 </ul>
-                <p style="margin-top: 20px; font-style: italic;">Each pattern is covered hands-on in Modules 5-13.</p>
+                <p style="margin-top: 20px; font-style: italic;">Each pattern is covered hands-on in Modules 9-18.</p>
                 <aside class="notes">Each pattern is covered hands-on in later modules.</aside>
             </section>
 
@@ -841,12 +846,12 @@
                         <tr><td>8</td><td>Network Policies</td><td>Pod-to-pod traffic control</td></tr>
                     </tbody>
                 </table>
-                <aside class="notes">Modules 1-8 cover core developer skills. By module 8, students can deploy, expose, configure, secure, and scale applications on Kubernetes.</aside>
+                <aside class="notes">Modules 1-13 cover core developer skills. By module 13, students can deploy, expose, configure, secure, and scale applications on Kubernetes.</aside>
             </section>
 
             <!-- Course Roadmap Part 2 -->
             <section>
-                <h2>&#128506;&#65039; Course Roadmap — Modules 9-13</h2>
+                <h2>&#128506;&#65039; Course Roadmap — Modules 14-18</h2>
                 <table>
                     <thead>
                         <tr>
@@ -883,7 +888,7 @@
                         </tr>
                     </tbody>
                 </table>
-                <aside class="notes">Modules 9-13 focus on operational excellence and real-world readiness. Module 13 ties everything together with end-to-end CI/CD and GitOps.</aside>
+                <aside class="notes">Modules 14-18 focus on operational excellence and real-world readiness. Module 18 ties everything together with end-to-end CI/CD and GitOps.</aside>
             </section>
 
             <!-- Lab Callout -->
@@ -926,7 +931,7 @@
             <section data-background="linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%)" class="questions-slide" style="text-align: center;">
                 <h2>&#10067; Questions &amp; Discussion</h2>
                 <p>What aspects of your current workflow would you most like Kubernetes to improve?</p>
-                <p style="font-size: 0.9em; margin-top: 30px;">Up Next: Module 2 &mdash; Scaling Your Applications</p>
+                <p style="font-size: 0.9em; margin-top: 30px;">Up Next: Module 2 &mdash; Pods &amp; Multi-Container Patterns</p>
                 <aside class="notes">Open the floor for questions. Common topics: CI/CD integration, database migrations, local development.</aside>
             </section>
 

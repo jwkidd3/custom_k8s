@@ -1,6 +1,6 @@
 # Lab 1: Exploring Your Kubernetes Cluster
 ### Hands-On Cluster Navigation and kubectl Fundamentals
-**Intermediate Kubernetes — Module 1 of 13**
+**Intermediate Kubernetes — Module 1 of 18**
 
 ---
 
@@ -364,4 +364,4 @@ kubectl delete namespace lab01-$STUDENT_NAME
 
 ---
 
-*Lab 1 Complete — Up Next: Lab 2 — Configuring Autoscaling*
+*Lab 1 Complete — Up Next: Lab 2 — Init Containers & Multi-Container Pods*

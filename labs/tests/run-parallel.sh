@@ -8,9 +8,8 @@
 # aggregates the per-lab pass/fail/skip counts.
 #
 # Usage:
-#   bash run-parallel.sh                 # all labs (platform + 1..13 + scheduling)
+#   bash run-parallel.sh                 # all labs (platform + 1..18)
 #   bash run-parallel.sh 5 6 7           # only these labs
-#   bash run-parallel.sh 2s              # the scheduling companion
 #   JOBS=4 bash run-parallel.sh          # cap concurrency (default 6)
 #
 # Portable to bash 3.2 (macOS) — no `wait -n`; uses a `jobs -rp` semaphore.
@@ -34,18 +33,13 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\
 script_for() {
   case "$1" in
     platform)        echo "$SCRIPT_DIR/test-platform.sh" ;;
-    1p|pods)         echo "$SCRIPT_DIR/test-lab-01-pods.sh" ;;
-    2s|scheduling)   echo "$SCRIPT_DIR/test-lab-02-scheduling.sh" ;;
-    2j|jobs)         echo "$SCRIPT_DIR/test-lab-02-jobs.sh" ;;
-    2q|quota)        echo "$SCRIPT_DIR/test-lab-02-quota.sh" ;;
-    crd|crds)        echo "$SCRIPT_DIR/test-lab-05-crds.sh" ;;
     *)               printf "%s/test-lab-%02d.sh\n" "$SCRIPT_DIR" "$1" ;;
   esac
 }
 
 # Lab list
 if [ $# -eq 0 ]; then
-  LABS=(platform 1 1p 2 2s 2j 2q 3 4 5 crd 6 7 8 9 10 11 12 13)
+  LABS=(platform $(seq 1 18))
 else
   LABS=("$@")
 fi

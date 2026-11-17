@@ -1,329 +1,146 @@
-# Lab 10: Health Checks and Probes
-### Liveness, Readiness, and Startup Probes for Resilient Workloads
-**Intermediate Kubernetes — Module 10 of 13**
+# Lab 10: Custom Resource Definitions (CRDs)
+### Extending the Kubernetes API with Your Own Resource Types
+**Intermediate Kubernetes — Extending Kubernetes (Module 10 of 18)**
 
 ---
 
 ## Lab Overview
 
-### What You'll Learn
+### What You Will Do
 
-- Why probes matter (no-probes baseline)
-- HTTP liveness probes and automatic restarts
-- Readiness probes and Service endpoint management
-- Startup probes for slow-starting applications
-- Tuning probe parameters for faster detection
-- *Optional:* TCP socket probes for non-HTTP services
-- *Optional:* Exec probes for custom health checks
-- *Optional:* Graceful shutdown with preStop hooks
+- Register a **CustomResourceDefinition** that adds a new `Website` resource type
+- Create and manage **custom resources** with `kubectl`, just like built-in objects
+- Enforce structure with an **OpenAPI validation schema**
+- Discover your type via `kubectl api-resources`, `kubectl explain`, and printer columns
+- See how **controllers/operators** turn custom resources into real behavior
 
-### Lab Details
+### Why this matters
 
-- **Duration:** ~25-35 minutes
+Almost every platform tool you'll meet as this course continues — the **Gateway API** (`HTTPRoute`) in the very next module, plus Flux (`HelmRelease`), cert-manager (`Certificate`), and Kyverno (`ClusterPolicy`) running your cluster — extends Kubernetes through **CRDs**. A CRD teaches the API server a new `kind`; a **controller** then watches those objects and makes the cluster match them. You now know the core built-in objects (Pods, Deployments, Services, ConfigMaps, Secrets); this lab shows how to define your *own* kinds alongside them. It covers the first half (the CRD + custom resources); the operator pattern is the second half.
 
-> **Note:** Steps 6-8 are optional stretch goals for students who finish early.
-- **Difficulty:** Intermediate
-- **Prerequisites:** Lab 1 (cluster access configured)
+> **Note:** A CRD is **cluster-scoped**, so this lab gives each student their own API **group** (`<usernumber>.example.com`) to avoid collisions. Set `STUDENT_NAME` and the commands below resolve to your group.
 
-> 💡 **Context:** Probes tie directly into the observability skills from Lab 9 — they generate events and metrics you can monitor.
+### Prerequisites
 
----
+- Completion of Lab 1 with `kubectl` and cluster access configured
 
-## Three Types of Probes
+### Duration
 
-| Probe | Question It Answers | On Failure |
-|-------|-------------------|------------|
-| 💚 **Liveness** | Is the container **alive**? | Kubernetes **restarts** the container |
-| 💙 **Readiness** | Can it **serve traffic**? | Removed from **Service endpoints** |
-| 💛 **Startup** | Has it **finished starting**? | Container is **killed** (liveness/readiness paused until success) |
-
-> 📝 **Key Concept:** Liveness and readiness probes are disabled until the startup probe succeeds. This prevents premature kills during slow initialization.
+Approximately 25-35 minutes
 
 ---
 
 ## Environment Setup
 
-Set your student identifier (use your first name or assigned number):
-
 ```bash
 cd ~/environment/custom_k8s/labs/lab-10
-# Set your unique student name
 export STUDENT_NAME=<usernumber>
-echo "Student: $STUDENT_NAME"
-kubectl config set-context --current --namespace=default
-```
-
-> ⚠️ **Important:** This shared cluster is used by all 22 students. Your `$STUDENT_NAME` ensures your resources don't conflict with others.
-
-```bash
-# Create the lab namespace
-kubectl create namespace probes-lab-$STUDENT_NAME
-
-# Set as the current context
-kubectl config set-context --current --namespace=probes-lab-$STUDENT_NAME
+export GROUP=$STUDENT_NAME.example.com    # your personal API group
+echo "Student: $STUDENT_NAME  Group: $GROUP"
+kubectl create namespace crd-$STUDENT_NAME
 ```
 
 ---
 
-## Step 1: Deploy an App Without Probes
+## Step 1: Register a CustomResourceDefinition
 
-<!-- Creates a basic nginx Deployment with no health probes -->
-```bash
-envsubst '$STUDENT_NAME' < no-probes-app.yaml | kubectl apply -f -
-```
-
-### Simulate a Failure
+The CRD tells the API server about a new `kind: Website` in your group, with a validation schema and extra columns for `kubectl get`:
 
 ```bash
-# Verify the app is running
-kubectl get pods -l app=no-probes-app
-curl_pod=$(kubectl get pod -l app=no-probes-app -o \
-  jsonpath='{.items[0].metadata.name}')
+envsubst '$STUDENT_NAME' < website-crd.yaml | kubectl apply -f -
 
-# Simulate nginx becoming unresponsive (delete the config)
-kubectl exec $curl_pod -- sh -c "rm \
-  /etc/nginx/conf.d/default.conf && nginx -s reload"
+# Wait until the API server has wired it up
+kubectl wait --for=condition=Established crd/websites.$GROUP --timeout=30s
 
-# Try to access the service — it will fail but the pod stays "Running"
-kubectl exec $curl_pod -- curl -s -o /dev/null -w "%{http_code}" localhost:80
+# Your new type now shows up alongside built-in resources
+kubectl api-resources --api-group=$GROUP
 ```
 
-> ⚠️ **Problem:** The pod shows `Running` and `1/1 Ready` even though it returns errors. Without probes, Kubernetes has no way to detect this failure.
+> ✅ **Checkpoint:** The CRD reports `Established`, and `api-resources` lists `websites` (shortname `ws`, kind `Website`, namespaced). You just extended the Kubernetes API — no server restart, no recompile.
 
 ---
 
-## Step 2: Add an HTTP Liveness Probe
+## Step 2: Create Custom Resources
 
-<!-- Creates an nginx Deployment with an HTTP liveness probe on / -->
+A **custom resource** is an instance of your new type. Create one and manage it exactly like a Pod or Deployment:
+
 ```bash
-envsubst '$STUDENT_NAME' < liveness-http.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < website-example.yaml | kubectl apply -f -
+
+# Your additionalPrinterColumns render here
+kubectl get websites.$GROUP -n crd-$STUDENT_NAME
+kubectl describe website.$GROUP blog -n crd-$STUDENT_NAME
+
+# Standard verbs, labels, YAML output all work
+kubectl get ws -n crd-$STUDENT_NAME -o yaml
 ```
 
-> 💡 **Probe defaults:** `failureThreshold: 3`, `timeoutSeconds: 1`, `periodSeconds: 10`. Any HTTP status 200–399 counts as success.
+> ✅ **Checkpoint:** `kubectl get` shows your `blog` Website with `DOMAIN`, `REPLICAS`, and `THEME` columns. It's stored in etcd and served by the API server like any native object — but nothing *acts* on it yet (see Step 5).
 
-### Test the Liveness Probe
+---
+
+## Step 3: Schema Validation
+
+The OpenAPI schema in the CRD makes the API server reject malformed resources. Try an invalid one:
 
 ```bash
-# Get a pod name
-LIVE_POD=$(kubectl get pod -l app=liveness-http \
-  -o jsonpath='{.items[0].metadata.name}')
-
-# Make the app unhealthy by deleting the index page
-kubectl exec $LIVE_POD -- rm /usr/share/nginx/html/index.html
-
-# Watch the pod — it will be restarted after ~30 seconds
-# (3 failures x 10 second period)
-kubectl get pods -l app=liveness-http -w
+envsubst '$STUDENT_NAME' < website-invalid.yaml | kubectl apply -f -
 ```
 
-> ✅ **Expected:** The `RESTARTS` column increments. Kubernetes detected the liveness failure and restarted the container. After restart, nginx returns with the default index page intact.
+> ⚠️ **Result:** rejected before it's ever stored — e.g. `spec.replicas: Invalid value: 99: spec.replicas in body should be less than or equal to 10`. The schema also requires `domain` and restricts `theme` to `light`/`dark`. Structural schemas give your custom type the same guardrails built-in types enjoy.
+
+---
+
+## Step 4: Discover the Type
+
+Because the schema lives in the API server, your type is **self-documenting**:
 
 ```bash
-# Check the events to see probe failure details
-kubectl describe pod $LIVE_POD | grep -A 5 "Liveness"
+# Explain fields like any built-in resource
+kubectl explain website.spec --api-version=$GROUP/v1
+
+# Short name works too
+kubectl get ws -n crd-$STUDENT_NAME
+```
+
+> ✅ **Checkpoint:** `kubectl explain` prints your fields (`domain`, `replicas`, `theme`) with their types and which are required — generated straight from the CRD schema.
+
+---
+
+## Step 5: The Other Half — Controllers
+
+Your `Website` is just **data** right now. Creating one didn't start any Pods, because a CRD only defines a *type* — it doesn't *do* anything. The magic comes from a **controller** (an **operator**) that:
+
+1. **Watches** for `Website` objects,
+2. **Reconciles** reality toward the spec (e.g. create a Deployment + Service for `blog.example.com` with 3 replicas),
+3. **Reports** back through the resource's `status`.
+
+The platform running your cluster uses operators built exactly this way — and you'll meet several as the course continues:
+
+| CRD | Controller does... |
+|-----|--------------------|
+| Flux `HelmRelease` | installs/upgrades a Helm chart |
+| cert-manager `Certificate` | issues & renews TLS certs |
+| Gateway API `HTTPRoute` | programs the Envoy Gateway |
+
+> This lab builds the **CRD** (the API); writing the **controller** is the operator pattern, a topic of its own.
+
+---
+
+## Step 6: Clean Up
+
+```bash
+# Deleting the CRD cascade-deletes every Website in it
+kubectl delete crd websites.$GROUP
+kubectl delete namespace crd-$STUDENT_NAME
 ```
 
 ---
 
-## Step 3: Add a Readiness Probe
-
-<!-- Creates a Deployment with readiness + liveness probes and a Service -->
-```bash
-envsubst '$STUDENT_NAME' < readiness-app.yaml | kubectl apply -f -
-```
-
-> 💡 The readiness probe checks `/ready` while the liveness probe checks `/`. The `successThreshold` of 2 means the pod must pass two consecutive checks before being added to the endpoint list.
-
-### Configure the Ready Endpoint
-
-```bash
-# Create the /ready endpoint on all pods
-for pod in $(kubectl get pods -l app=readiness-app \
-  -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl exec $pod -- sh -c \
-    "mkdir -p /usr/share/nginx/html && echo 'OK' > /usr/share/nginx/html/ready"
-done
-
-# Verify pods become ready
-kubectl get pods -l app=readiness-app
-
-# Verify endpoints are populated
-kubectl get endpoints readiness-svc
-```
-
-> ✅ **Expected:** All 3 pods show `1/1 Ready` and the endpoints list shows 3 IP addresses.
-
-### Test Readiness Failure
-
-```bash
-# Make one pod unready by removing the /ready file
-READY_POD=$(kubectl get pod -l app=readiness-app \
-  -o jsonpath='{.items[0].metadata.name}')
-kubectl exec $READY_POD -- rm /usr/share/nginx/html/ready
-
-# Watch the pod become NotReady
-kubectl get pods -l app=readiness-app -w
-
-# Check endpoints — the unready pod is REMOVED
-kubectl get endpoints readiness-svc
-```
-
-> ✅ **Expected:** The pod shows `0/1 Running` (not ready, but NOT restarted). Endpoints now show only 2 IP addresses.
-
-### Restore Readiness
-
-```bash
-# Restore the /ready endpoint
-kubectl exec $READY_POD -- sh -c \
-  "echo 'OK' > /usr/share/nginx/html/ready"
-
-# Watch it become Ready again (requires 2 successes due to successThreshold)
-kubectl get pods -l app=readiness-app -w
-
-# Verify endpoints are restored
-kubectl get endpoints readiness-svc
-```
-
-> ✅ **Expected:** After ~10 seconds (2 successful checks at 5s intervals), the pod returns to `1/1 Ready` and its IP reappears in the endpoints list.
-
----
-
-## Step 4: Startup Probes for Slow-Starting Apps
-
-<!-- Creates a slow-starting app with startup, liveness, and readiness probes -->
-```bash
-envsubst '$STUDENT_NAME' < slow-start-app.yaml | kubectl apply -f -
-```
-
-> 💡 The startup probe allows up to 60 seconds (12 failures x 5 seconds) for the application to start. During this time, liveness and readiness probes are disabled.
-
-### Observe Startup Behavior
-
-```bash
-# Watch the pod start up
-kubectl get pods -l app=slow-start-app -w
-```
-
-> ✅ **Expected Timeline:**
-> - **0–5s:** Container starting, startup probe not yet active
-> - **5–30s:** Startup probe fails (app still initializing) — this is OK
-> - **~35s:** App becomes responsive, startup probe passes
-> - **~35s+:** Liveness and readiness probes begin
-
-> ⚠️ **Without a Startup Probe:** The liveness probe would kill the container after 3 failures (30 seconds), before the app finishes initializing!
-
----
-
-## Step 5: Tune Probe Parameters
-
-### Probe Parameter Reference
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `initialDelaySeconds` | 0 | Seconds to wait before first probe |
-| `periodSeconds` | 10 | How often to perform the probe |
-| `timeoutSeconds` | 1 | Seconds before probe times out |
-| `failureThreshold` | 3 | Consecutive failures to declare unhealthy |
-| `successThreshold` | 1 | Consecutive successes to declare healthy |
-
-> 📝 **Detection Time Formula:** Time to detect failure = `periodSeconds x failureThreshold`. With defaults: 10 x 3 = **30 seconds**.
-
-> 💡 `successThreshold` must be 1 for liveness and startup probes. It can be higher for readiness probes to prevent flapping.
-
-### Deploy Tuned Probes
-
-<!-- Creates a Deployment with tuned liveness/readiness probe parameters -->
-```bash
-envsubst '$STUDENT_NAME' < tuned-probes.yaml | kubectl apply -f -
-```
-
-> 💡 **Analysis:**
-> - Liveness detection time: 5s x 2 = **10 seconds** (vs 30s default)
-> - Readiness detection time: 3s x 2 = **6 seconds**
-> - Readiness recovery time: 3s x 3 = **9 seconds** (higher successThreshold)
->
-> Faster probes catch failures quicker but increase kubelet overhead. For most workloads, checking every 5–10 seconds is sufficient.
-
----
-
----
-
-## Optional Stretch Goals
-
-> These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
-
-### Step 6: TCP Socket Probes
-
-TCP probes check whether a port is open — useful for non-HTTP services like Redis, databases, or message queues:
-
-```bash
-envsubst '$STUDENT_NAME' < tcp-probe-app.yaml | kubectl apply -f -
-
-kubectl get pods -l app=tcp-probe-app
-kubectl describe pod -l app=tcp-probe-app | grep -A 3 "Liveness\|Readiness"
-```
-
-> ✅ **Checkpoint:** Both liveness and readiness probes use `tcpSocket` on port 6379.
-
----
-
-### Step 7: Exec Probes
-
-Exec probes run a command inside the container — useful for custom health checks:
-
-```bash
-envsubst '$STUDENT_NAME' < exec-probe-app.yaml | kubectl apply -f -
-
-kubectl get pods -l app=exec-probe-app
-kubectl describe pod -l app=exec-probe-app | grep -A 3 "Liveness"
-```
-
-> ✅ **Checkpoint:** The liveness probe runs `cat /tmp/healthy` inside the container.
-
----
-
-### Step 8: Graceful Shutdown and preStop Hooks
-
-Configure graceful shutdown to allow in-flight requests to complete before termination:
-
-```bash
-envsubst '$STUDENT_NAME' < graceful-app.yaml | kubectl apply -f -
-
-kubectl get pods -l app=graceful-app
-kubectl get pod -l app=graceful-app -o jsonpath='{.items[0].spec.terminationGracePeriodSeconds}'
-```
-
-> ✅ **Checkpoint:** `terminationGracePeriodSeconds` is 45 (default is 30). The preStop hook runs `sleep 10; nginx -s quit` to drain connections before stopping.
-
-> **Why it matters:** Without a preStop hook, `SIGTERM` is sent immediately. If the pod is still in Service endpoints, new requests may arrive during shutdown.
-
----
-
-## Step 9: Clean Up
-
-```bash
-kubectl config set-context --current --namespace=default
-kubectl delete namespace probes-lab-$STUDENT_NAME
-
-# Verify cleanup
-kubectl get namespace probes-lab-$STUDENT_NAME
-```
-
-> ✅ **Expected:** `Error from server (NotFound): namespaces "probes-lab-<usernumber>" not found`
-
----
-
-## Key Takeaways
-
-- **No Probes = No Protection:** Without probes, broken pods continue receiving traffic silently
-- **Liveness:** Detects deadlocked or stuck containers and triggers restarts
-- **Readiness:** Controls traffic routing — only healthy pods serve requests
-- **Startup:** Protects slow-starting containers from premature liveness kills
-- **Tuning:** Balance detection speed against probe overhead and false positives
-- **TCP Probes:** Check port connectivity for non-HTTP services
-- **Exec Probes:** Run custom health check commands inside containers
-- **Graceful Shutdown:** Use `preStop` hooks and `terminationGracePeriodSeconds` to drain connections
-
----
-
-*Lab 10 Complete — Up Next: Lab 11 — Deployment Strategies*
+## Summary
+
+- A **CRD** teaches the API server a new `kind` — extending Kubernetes with no restart or recompile.
+- **Custom resources** are managed with the same `kubectl` verbs, labels, and output formats as built-in objects.
+- An **OpenAPI validation schema** enforces required fields, types, ranges, and enums; **additionalPrinterColumns** enrich `kubectl get`; **shortNames** and `kubectl explain` make the type discoverable.
+- A CRD is only the **API**; a **controller/operator** watches custom resources and reconciles the cluster to match — that's how Flux, cert-manager, and Gateway API all work.
+- CRDs are **cluster-scoped**; isolate them (here, per-student groups) to avoid collisions.

@@ -1,6 +1,6 @@
-# Lab 13: GitOps with ArgoCD
-### Declarative Application Delivery, Sync, and Rollback
-**Intermediate Kubernetes — Module 13 of 13**
+# Lab 13: Network Policies
+### Controlling Pod-to-Pod Communication with NetworkPolicy Resources
+**Intermediate Kubernetes — Module 13 of 18**
 
 ---
 
@@ -8,20 +8,21 @@
 
 ### Objectives
 
-- Explore the ArgoCD UI and CLI
-- Create an ArgoCD Application from a public Git repo
-- Observe sync status and application health
-- Make changes and trigger a sync
-- Perform a rollback
-- *Optional:* Explore FluxCD reconciliation and drift detection
+- Deploy a three-tier application and verify default connectivity
+- Apply a default-deny ingress NetworkPolicy
+- Create targeted ingress policies per tier
+- Debug a broken NetworkPolicy
+- *Optional:* Apply egress deny-all and selective allow policies
+- *Optional:* Use namespace selectors for cross-namespace access
 
 ### Prerequisites
 
-- Lab 1 (cluster access configured)
+- Completion of Lab 1 with `kubectl` and cluster access configured
+- CNI with NetworkPolicy support (Calico or Cilium)
 
-> **Duration:** ~30 minutes
+> **Duration:** ~30-40 minutes
 >
-> **Note:** Steps 7-9 (FluxCD) are optional stretch goals for students who finish early.
+> **Note:** Steps 9-10 are optional stretch goals for students who finish early.
 
 ---
 
@@ -36,225 +37,207 @@ kubectl config set-context --current --namespace=default
 
 ---
 
-## Step 1: Verify ArgoCD Installation
+## Step 1: Deploy a Three-Tier Application
 
 ```bash
-kubectl get pods -n argocd
-kubectl get svc -n argocd
+kubectl create namespace lab08-$STUDENT_NAME
 ```
 
-> ⚠️ ArgoCD is pre-installed. Do not reinstall or delete the `argocd` namespace.
+### Deploy the Database Tier
 
-Get the ArgoCD admin password:
+<!-- Creates a database Pod and Service -->
+
+Apply the manifest:
 
 ```bash
-ARGOCD_PWD=$(kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d)
-echo "ArgoCD password: $ARGOCD_PWD"
+envsubst '$STUDENT_NAME' < database.yaml | kubectl apply -f -
 ```
 
-Access the ArgoCD UI:
+### Deploy the Backend and Frontend Tiers
+
+<!-- Creates backend and frontend Pods and Services -->
+
+Apply the manifests:
 
 ```bash
-# The Service name varies by install (release-name prefix), so select the ArgoCD
-# server by its well-known label. A name match on 'server$' is WRONG — it also
-# matches 'argocd-repo-server', which has no port 443.
-ARGOCD_SVC=$(kubectl get svc -n argocd -l app.kubernetes.io/name=argocd-server -o name | head -1)
-# This ArgoCD server runs with --insecure, so forward its HTTP port (80) and open
-# http:// — forwarding 443 would serve plain HTTP over a TLS port and just hang.
-echo "Forwarding $ARGOCD_SVC on http://localhost:8080 ..."
-kubectl port-forward -n argocd "$ARGOCD_SVC" 8080:80 &
-```
+envsubst '$STUDENT_NAME' < backend.yaml | kubectl apply -f -
+envsubst '$STUDENT_NAME' < frontend.yaml | kubectl apply -f -
 
-> ⚠️ **Cloud9:** Click **Preview → Preview Running Application** to open the UI. Login: `admin` / password from above.
-
----
-
-## Step 2: Connect the ArgoCD CLI (core mode)
-
-Use **core mode** — the CLI talks directly to the cluster through your kubeconfig, so no port-forward or `argocd login` is needed (and it avoids the server address/TLS issues that trip up the login flow):
-
-```bash
-kubectl config set-context --current --namespace=argocd
-export ARGOCD_OPTS='--core'
-
-argocd version
-argocd cluster list
-argocd proj list
-argocd app list
-```
-
-> ✅ **Checkpoint:** CLI shows the in-cluster destination and the `default` project. `argocd app list` is empty until you create an Application (next step). Keep `ARGOCD_OPTS=--core` exported for the rest of the lab; re-export it if you open a new terminal.
-
----
-
-## Step 3: Prepare a GitOps Repository
-
-Create a local Git repo with Kubernetes manifests:
-
-```bash
-mkdir -p ~/argocd-lab/manifests && cd ~/argocd-lab
-git init
-```
-
-```bash
-cat <<'EOF' > manifests/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: demo-app
-  labels: { app: demo-app }
-spec:
-  replicas: 2
-  selector:
-    matchLabels: { app: demo-app }
-  template:
-    metadata:
-      labels: { app: demo-app }
-    spec:
-      containers:
-      - name: app
-        image: hashicorp/http-echo
-        args: ["-text=Hello from ArgoCD v1", "-listen=:8080"]
-        ports:
-        - containerPort: 8080
-        resources:
-          requests: { cpu: 50m, memory: 32Mi }
-          limits: { cpu: 100m, memory: 64Mi }
-EOF
-```
-
-```bash
-cat <<'EOF' > manifests/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: demo-app-svc
-spec:
-  selector: { app: demo-app }
-  ports:
-  - port: 80
-    targetPort: 8080
-EOF
-```
-
-```bash
-git add . && git commit -m "Initial demo-app manifests"
+kubectl wait --for=condition=Ready pod --all -n lab08-$STUDENT_NAME --timeout=60s
+kubectl get pods -n lab08-$STUDENT_NAME -o wide --show-labels
 ```
 
 ---
 
-## Step 4: Create an ArgoCD Application
+## Step 2: Verify Default Connectivity
 
-Since we're using a local repo (not hosted on GitHub), we'll apply manifests directly through ArgoCD using the CLI:
-
-```bash
-kubectl create namespace argocd-lab-$STUDENT_NAME
-
-argocd app create demo-$STUDENT_NAME \
-  --project default \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace argocd-lab-$STUDENT_NAME \
-  --directory-recurse \
-  --path guestbook \
-  --repo https://github.com/argoproj/argocd-example-apps.git \
-  --revision master \
-  --sync-policy automated \
-  --auto-prune \
-  --self-heal
-```
-
-> This uses the ArgoCD example apps repo to demonstrate a working sync. We'll also deploy our local manifests separately.
+Confirm all pods can communicate (all should succeed):
 
 ```bash
-argocd app get demo-$STUDENT_NAME
-argocd app list
-```
+kubectl exec frontend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
 
-> ✅ **Checkpoint:** The application shows `Synced` and `Healthy` status.
+kubectl exec frontend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+
+kubectl exec database -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+```
 
 ---
 
-## Step 5: Deploy Local Manifests and Observe
+## Step 3: Apply Default Deny-All Ingress Policy
 
-Apply your local manifests alongside the ArgoCD app:
+<!-- Creates a NetworkPolicy that denies all ingress traffic in the namespace -->
 
-```bash
-kubectl apply -f ~/argocd-lab/manifests/ -n argocd-lab-$STUDENT_NAME
-
-kubectl get pods -n argocd-lab-$STUDENT_NAME
-kubectl get svc -n argocd-lab-$STUDENT_NAME
-```
-
-Test the application:
+Apply the manifest:
 
 ```bash
-kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never \
-  -n argocd-lab-$STUDENT_NAME -- curl -s demo-app-svc
+envsubst '$STUDENT_NAME' < deny-all-ingress.yaml | kubectl apply -f -
 ```
-
-> ✅ **Checkpoint:** Returns `Hello from ArgoCD v1`.
 
 ---
 
-## Step 6: Update and Rollback
-
-### Make a Change
+## Step 4: Verify Isolation
 
 ```bash
-cd ~/argocd-lab
-sed -i 's/Hello from ArgoCD v1/Hello from ArgoCD v2/' manifests/deployment.yaml
-kubectl apply -f manifests/ -n argocd-lab-$STUDENT_NAME
-kubectl rollout status deployment/demo-app -n argocd-lab-$STUDENT_NAME
+# All should FAIL / timeout
+kubectl exec frontend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+echo "Exit code: $?"
 
-kubectl run curl-test2 --image=curlimages/curl --rm -it --restart=Never \
-  -n argocd-lab-$STUDENT_NAME -- curl -s demo-app-svc
+kubectl exec backend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+echo "Exit code: $?"
+
+kubectl exec database -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+echo "Exit code: $?"
 ```
 
-> ✅ **Checkpoint:** Returns `Hello from ArgoCD v2`.
+> ✅ **Checkpoint:** All curl commands timeout with a non-zero exit code.
 
-### Rollback
+---
+
+## Step 5: Allow Frontend to Backend Communication
+
+<!-- Creates a NetworkPolicy allowing ingress to backend from frontend on port 80 -->
+
+Apply the manifest:
 
 ```bash
-kubectl rollout undo deployment/demo-app -n argocd-lab-$STUDENT_NAME
-kubectl rollout status deployment/demo-app -n argocd-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < allow-frontend-to-backend.yaml | kubectl apply -f -
 
-kubectl run curl-test3 --image=curlimages/curl --rm -it --restart=Never \
-  -n argocd-lab-$STUDENT_NAME -- curl -s demo-app-svc
+# Frontend -> Backend (should now SUCCEED)
+kubectl exec frontend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+
+# Database -> Backend (should still FAIL)
+kubectl exec database -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
 ```
 
-> ✅ **Checkpoint:** Returns `Hello from ArgoCD v1` — rolled back to the previous version.
+> ✅ **Checkpoint:** Frontend to backend succeeds; database to backend times out.
 
-### ArgoCD Self-Heal Demo
+---
 
-If ArgoCD detects drift from the Git source, it auto-corrects. Observe self-heal on the ArgoCD-managed app:
+## Step 6: Allow Backend to Database Communication
+
+<!-- Creates a NetworkPolicy allowing ingress to database from backend on port 80 -->
+
+Apply the manifest:
 
 ```bash
-# Scale the ArgoCD-managed guestbook app to create drift
-kubectl scale deployment guestbook-ui -n argocd-lab-$STUDENT_NAME --replicas=5 2>/dev/null
+envsubst '$STUDENT_NAME' < allow-backend-to-database.yaml | kubectl apply -f -
 
-# Watch ArgoCD revert it (within ~30 seconds)
-kubectl get deployment -n argocd-lab-$STUDENT_NAME --watch
+# Backend -> Database (should now SUCCEED)
+kubectl exec backend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+
+# Frontend -> Database (should still FAIL)
+kubectl exec frontend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
 ```
 
-> ✅ **Checkpoint:** ArgoCD detects the drift and reverts replicas to the Git-defined value.
+> ✅ **Checkpoint:** Backend to database succeeds; frontend to database times out.
 
-### ArgoCD History and Rollback
+---
 
-ArgoCD refuses to roll back an app while automated sync is enabled (it would immediately re-sync). Disable auto-sync first, roll back, then re-enable:
+## Step 7: Test the Complete Policy Set
 
 ```bash
-argocd app set demo-$STUDENT_NAME --sync-policy none
+echo "=== ALLOWED PATHS ==="
+echo -n "Frontend -> Backend: "
+kubectl exec frontend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+  -w "%{http_code}" --max-time 3 \
+  http://backend:80 2>/dev/null || echo "BLOCKED"
 
-argocd app history demo-$STUDENT_NAME
-# Roll back to revision 1 (the first entry shown by `app history`)
-argocd app rollback demo-$STUDENT_NAME 1
+echo -n "Backend -> Database: "
+kubectl exec backend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+  -w "%{http_code}" --max-time 3 \
+  http://database:80 2>/dev/null || echo "BLOCKED"
 
-# Re-enable automated sync with prune and self-heal
-argocd app set demo-$STUDENT_NAME --sync-policy automated --auto-prune --self-heal
+echo ""
+echo "=== BLOCKED PATHS ==="
+echo -n "Frontend -> Database: "
+kubectl exec frontend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+  -w "%{http_code}" --max-time 3 \
+  http://database:80 2>/dev/null || echo "BLOCKED"
+
+echo -n "Database -> Frontend: "
+kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+  -w "%{http_code}" --max-time 3 \
+  http://frontend:80 2>/dev/null || echo "BLOCKED"
+
+echo -n "Database -> Backend: "
+kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+  -w "%{http_code}" --max-time 3 \
+  http://backend:80 2>/dev/null || echo "BLOCKED"
 ```
 
-> 💡 `argocd-app.yaml` in this lab directory shows the **declarative** `Application` resource equivalent of the `argocd app create` command from Step 4 — in production you'd commit that manifest to Git rather than using the CLI.
+> ✅ **Checkpoint:** Frontend->Backend: 200, Backend->Database: 200, all others: BLOCKED.
+
+---
+
+## Step 8: Debug a Broken Policy
+
+First deploy a small client pod we'll reuse to test reachability. Keep it **running** (don't use a throwaway `--rm` pod) — a cold pod's first DNS lookup + connection can take several seconds and a tight `curl` timeout would look like a policy failure when it isn't:
+
+```bash
+kubectl run test-client --image=curlimages/curl -n lab08-$STUDENT_NAME \
+  --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/test-client -n lab08-$STUDENT_NAME --timeout=60s
+```
+
+Now apply this intentionally broken policy and test from the client:
+
+<!-- Creates a NetworkPolicy with two intentional bugs for debugging practice -->
+
+```bash
+envsubst '$STUDENT_NAME' < broken-policy.yaml | kubectl apply -f -
+
+kubectl exec test-client -n lab08-$STUDENT_NAME -- \
+  curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
+  http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+```
+
+> ⚠️ **Result: `HTTP 000` (the request times out).** Two bugs: (1) `from.podSelector` matches `tier: frontend` (self-referencing) -- should be `from: []` to allow all sources. (2) Port is `8080` but the frontend listens on `80`.
+
+### Fix the Broken Policy
+
+<!-- Creates the corrected NetworkPolicy (from: [] and port: 80) -->
+
+Apply the corrected policy and re-test with the **same** client pod:
+
+```bash
+envsubst '$STUDENT_NAME' < fixed-policy.yaml | kubectl apply -f -
+
+kubectl exec test-client -n lab08-$STUDENT_NAME -- \
+  curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
+  http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+```
+
+> ✅ **Checkpoint:** The same client now gets **`HTTP 200`** — the fixed policy (`from: []`, port `80`) allows traffic from any source on the port the frontend actually serves. (`-o /dev/null -w "HTTP %{http_code}"` prints a clear status code instead of the raw HTML page.)
 
 ---
 
@@ -264,98 +247,62 @@ argocd app set demo-$STUDENT_NAME --sync-policy automated --auto-prune --self-he
 
 > These exercises cover additional topics from the presentation. Complete them if you finish the core lab early.
 
-### Step 7: Explore FluxCD
+### Step 9: Egress Policies
 
-> ⚠️ Flux is pre-installed on the cluster. Do not run `flux bootstrap` or `flux uninstall`.
+Apply a default deny-all egress policy, then selectively allow DNS:
 
 ```bash
-flux check
+# Deny all outbound traffic
+envsubst '$STUDENT_NAME' < deny-all-egress.yaml | kubectl apply -f -
 
-kubectl get pods -n flux-system
-kubectl get crds | grep flux
-
-flux get sources git
-flux get sources helm
-flux get kustomizations
+# Verify — outbound requests should now fail
+kubectl exec frontend -n lab08-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+echo "Exit code: $?"
 ```
+
+```bash
+# Allow DNS resolution (UDP port 53)
+envsubst '$STUDENT_NAME' < allow-dns-egress.yaml | kubectl apply -f -
+
+kubectl describe networkpolicy allow-dns-egress -n lab08-$STUDENT_NAME
+```
+
+> ✅ **Checkpoint:** The deny-all-egress policy blocks all outbound traffic. The allow-dns-egress policy permits DNS resolution on port 53.
 
 ---
 
-### Step 8: Create a FluxCD HelmRelease
+### Step 10: Namespace-Based Policy
+
+Allow ingress from a monitoring namespace:
 
 ```bash
-kubectl create namespace flux-lab-$STUDENT_NAME
+envsubst '$STUDENT_NAME' < allow-monitoring-ingress.yaml | kubectl apply -f -
+
+kubectl describe networkpolicy allow-monitoring-ingress -n lab08-$STUDENT_NAME
 ```
 
-Review `helm-source.yaml` and `helm-release.yaml`, then apply:
-
-```bash
-envsubst '$STUDENT_NAME' < helm-source.yaml | kubectl apply -f -
-envsubst '$STUDENT_NAME' < helm-release.yaml | kubectl apply -f -
-
-flux get helmreleases -n flux-lab-$STUDENT_NAME lab-podinfo-$STUDENT_NAME --watch
-
-helm list -n flux-lab-$STUDENT_NAME
-
-kubectl get all -n flux-lab-$STUDENT_NAME \
-  -l app.kubernetes.io/name=lab-podinfo-$STUDENT_NAME
-```
-
-> ✅ The HelmRelease shows `Ready: True` and podinfo pods are running with 2 replicas.
+> ✅ **Checkpoint:** The policy uses a `namespaceSelector` with `purpose: monitoring` to allow ingress on port 80 from pods in monitoring namespaces.
 
 ---
 
-### Step 9: Test Drift Detection
+## Step 11: Clean Up
 
 ```bash
-# Scale manually to create drift
-kubectl scale deployment -n flux-lab-$STUDENT_NAME \
-  -l app.kubernetes.io/name=lab-podinfo-$STUDENT_NAME \
-  --replicas=5
-
-kubectl get deployment -n flux-lab-$STUDENT_NAME
-
-# Force reconciliation -- Flux reverts to 2 replicas
-flux reconcile helmrelease lab-podinfo-$STUDENT_NAME \
-  -n flux-lab-$STUDENT_NAME
-
-kubectl get deployment -n flux-lab-$STUDENT_NAME --watch
+kubectl delete namespace lab08-$STUDENT_NAME
 ```
-
-> ✅ After reconciliation, Flux reverts replicas to 2.
-
----
-
-## Clean Up
-
-```bash
-# ArgoCD resources
-argocd app delete demo-$STUDENT_NAME --yes 2>/dev/null
-kubectl delete namespace argocd-lab-$STUDENT_NAME
-rm -rf ~/argocd-lab
-
-# FluxCD resources (if completed)
-kubectl delete helmrelease lab-podinfo-$STUDENT_NAME \
-  -n flux-lab-$STUDENT_NAME --ignore-not-found
-kubectl delete helmrepository podinfo-$STUDENT_NAME \
-  -n flux-system --ignore-not-found
-kubectl delete namespace flux-lab-$STUDENT_NAME 2>/dev/null
-
-pkill -f "port-forward.*8080" 2>/dev/null
-```
-
-> ⚠️ Do NOT delete the `argocd` or `flux-system` namespaces — they are shared by all students.
 
 ---
 
 ## Summary
 
-- **ArgoCD Application** — declares Git source, destination cluster/namespace, and sync policy
-- **Automated Sync** — ArgoCD continuously reconciles cluster state with Git
-- **Self-Heal** — manual changes are automatically reverted to match Git
-- **Rollback** — use `argocd app rollback` or `kubectl rollout undo`
-- **FluxCD** — HelmRelease CRD for declarative Helm lifecycle with drift correction
+- Kubernetes defaults to allowing all pod-to-pod communication -- NetworkPolicies add restrictions
+- Start with a default deny-all policy, then selectively allow required traffic
+- NetworkPolicies are additive -- multiple policies combine their allowed paths
+- Use `podSelector` and labels to precisely control which pods can communicate
+- **Egress policies** control outbound traffic -- always allow DNS (port 53) when restricting egress
+- **Namespace selectors** enable cross-namespace communication rules (e.g., monitoring access)
 
 ---
 
-*Lab 13 Complete*
+*Lab 13 Complete — Up Next: Lab 14 — Observability*
