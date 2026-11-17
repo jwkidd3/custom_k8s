@@ -121,7 +121,7 @@ kubectl get deployment metrics-server -n kube-system
 kubectl get apiservice v1beta1.metrics.k8s.io
 ```
 
-> 💡 If not installed: `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`
+> 💡 metrics-server is pre-installed by the platform. If `top` reports the Metrics API is unavailable, wait a moment or `kubectl rollout restart deployment metrics-server -n kube-system`. Do **not** apply the upstream `components.yaml` — it uses a different label scheme and will break the running install.
 
 ### kubectl top: Node and Pod Metrics
 

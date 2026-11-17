@@ -43,10 +43,10 @@ kubectl get apiservices | grep metrics
 kubectl top nodes
 ```
 
-> ⚠️ **Troubleshooting:** If metrics-server is not installed, run:
+> ⚠️ **Troubleshooting:** metrics-server is pre-installed by the platform (via Helm). If `kubectl top nodes` reports *"Metrics API not available"*, give it a moment, then restart it — do **not** apply the upstream `components.yaml`, which uses a different label scheme (`k8s-app`) and will break the running install:
 > ```bash
-> kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-> kubectl wait --for=condition=ready pod -l k8s-app=metrics-server -n kube-system --timeout=120s
+> kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=metrics-server -n kube-system --timeout=120s
+> kubectl rollout restart deployment metrics-server -n kube-system   # only if still unavailable
 > ```
 
 ---
