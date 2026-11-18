@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: web
-  namespace: lab03-$STUDENT_NAME
+  namespace: lab07-$STUDENT_NAME
 spec:
   serviceName: "web-headless"
   replicas: 3

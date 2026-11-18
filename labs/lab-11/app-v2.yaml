@@ -1,6 +1,6 @@
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: app-v2, namespace: lab06-$STUDENT_NAME }
+metadata: { name: app-v2, namespace: lab11-$STUDENT_NAME }
 spec:
   replicas: 2
   selector: { matchLabels: { app: web, version: v2 } }
@@ -18,7 +18,7 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: app-v2-svc, namespace: lab06-$STUDENT_NAME }
+metadata: { name: app-v2-svc, namespace: lab11-$STUDENT_NAME }
 spec:
   selector: { app: web, version: v2 }
   ports:

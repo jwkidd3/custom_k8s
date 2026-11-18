@@ -8,8 +8,8 @@ LAB_DIR="$(cd "$SCRIPT_DIR/../lab-12" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 export STUDENT_NAME="test-$$"
-NS="lab07-$STUDENT_NAME"
-NS_RESTRICTED="lab07-restricted-$STUDENT_NAME"
+NS="lab12-$STUDENT_NAME"
+NS_RESTRICTED="lab12-restricted-$STUDENT_NAME"
 echo "=== Lab 12: RBAC and Pod Security (ns: $NS) ==="
 echo ""
 

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: root-test
-  namespace: lab07-restricted-$STUDENT_NAME
+  namespace: lab12-restricted-$STUDENT_NAME
 spec:
   containers:
   - name: nginx

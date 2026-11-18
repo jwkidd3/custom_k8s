@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: php-apache
-  namespace: lab02-$STUDENT_NAME
+  namespace: lab03-$STUDENT_NAME
 spec:
   replicas: 1
   selector:

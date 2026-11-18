@@ -2,11 +2,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: read-pods
-  namespace: lab07-$STUDENT_NAME
+  namespace: lab12-$STUDENT_NAME
 subjects:
 - kind: ServiceAccount
   name: pod-viewer
-  namespace: lab07-$STUDENT_NAME
+  namespace: lab12-$STUDENT_NAME
 roleRef:
   kind: Role
   name: pod-reader

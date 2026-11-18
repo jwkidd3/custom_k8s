@@ -37,7 +37,7 @@ kubectl config set-context --current --namespace=default
 ## Step 1: Deploy a Multi-Tier Application
 
 ```bash
-kubectl create namespace lab04-$STUDENT_NAME
+kubectl create namespace lab08-$STUDENT_NAME
 ```
 
 <!-- Creates backend Deployment (3 replicas of httpbin with readiness probe) -->
@@ -47,7 +47,7 @@ Apply the manifests:
 ```bash
 envsubst '$STUDENT_NAME' < backend-deployment.yaml | kubectl apply -f -
 envsubst '$STUDENT_NAME' < frontend-deployment.yaml | kubectl apply -f -
-kubectl get pods -n lab04-$STUDENT_NAME -o wide
+kubectl get pods -n lab08-$STUDENT_NAME -o wide
 ```
 
 > ✅ **Checkpoint:** You should have 5 pods running -- 3 backend and 2 frontend, all 1/1 Ready.
@@ -61,8 +61,8 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < backend-svc.yaml | kubectl apply -f -
-kubectl get svc backend-svc -n lab04-$STUDENT_NAME
-kubectl describe svc backend-svc -n lab04-$STUDENT_NAME
+kubectl get svc backend-svc -n lab08-$STUDENT_NAME
+kubectl describe svc backend-svc -n lab08-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The `describe` output should list Endpoints matching all three backend pod IPs.
@@ -72,19 +72,19 @@ kubectl describe svc backend-svc -n lab04-$STUDENT_NAME
 ## Step 3: Test DNS-Based Service Discovery
 
 ```bash
-FRONTEND_POD=$(kubectl get pod -n lab04-$STUDENT_NAME -l tier=web \
+FRONTEND_POD=$(kubectl get pod -n lab08-$STUDENT_NAME -l tier=web \
   -o jsonpath='{.items[0].metadata.name}')
 
 # Install tools in the nginx container
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
-  apt-get update -qq && kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- \
+  apt-get update -qq && kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- \
   apt-get install -y -qq curl bind9-dnsutils > /dev/null
 
 # Test DNS resolution
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- nslookup backend-svc
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- nslookup backend-svc
 
 # Curl the backend through the Service
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- curl -s backend-svc/ip
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- curl -s backend-svc/ip
 ```
 
 > ✅ **Checkpoint:** `nslookup` resolves `backend-svc` to its ClusterIP, and `curl` returns a JSON response from a backend pod. (The `/ip` endpoint reports the caller's source IP, so it stays the same across requests — the Service still load-balances each new connection across the backend pods behind that single ClusterIP.)
@@ -94,10 +94,10 @@ kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- curl -s backend-svc/ip
 ## Step 4: Examine DNS Records in Detail
 
 ```bash
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
-  nslookup backend-svc.lab04-$STUDENT_NAME.svc.cluster.local
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- \
+  nslookup backend-svc.lab08-$STUDENT_NAME.svc.cluster.local
 
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- cat /etc/resolv.conf
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- cat /etc/resolv.conf
 ```
 
 DNS resolution formats:
@@ -105,8 +105,8 @@ DNS resolution formats:
 | Format | Example |
 |--------|---------|
 | Short name (same namespace) | `backend-svc` |
-| Namespace-qualified | `backend-svc.lab04-$STUDENT_NAME` |
-| FQDN | `backend-svc.lab04-$STUDENT_NAME.svc.cluster.local` |
+| Namespace-qualified | `backend-svc.lab08-$STUDENT_NAME` |
+| FQDN | `backend-svc.lab08-$STUDENT_NAME.svc.cluster.local` |
 
 > ✅ **Checkpoint:** The `resolv.conf` should show search domains including your namespace.
 
@@ -118,13 +118,13 @@ DNS resolution formats:
 
 ```bash
 # Endpoints: one object with all pod IPs in a flat list
-kubectl get endpoints backend-svc -n lab04-$STUDENT_NAME
-kubectl get endpoints backend-svc -n lab04-$STUDENT_NAME -o yaml | grep -A 2 "addresses:"
+kubectl get endpoints backend-svc -n lab08-$STUDENT_NAME
+kubectl get endpoints backend-svc -n lab08-$STUDENT_NAME -o yaml | grep -A 2 "addresses:"
 
 # EndpointSlices: sharded by addressType, with conditions per endpoint
-kubectl get endpointslices -n lab04-$STUDENT_NAME \
+kubectl get endpointslices -n lab08-$STUDENT_NAME \
   -l kubernetes.io/service-name=backend-svc
-kubectl get endpointslices -n lab04-$STUDENT_NAME \
+kubectl get endpointslices -n lab08-$STUDENT_NAME \
   -l kubernetes.io/service-name=backend-svc -o yaml | grep -A 5 "endpoints:"
 ```
 
@@ -134,11 +134,11 @@ Scale the backend and watch Endpoints change:
 
 ```bash
 # In one terminal, watch endpoints
-kubectl get endpoints backend-svc -n lab04-$STUDENT_NAME -w
+kubectl get endpoints backend-svc -n lab08-$STUDENT_NAME -w
 
 # In another terminal, scale down then back up
-kubectl scale deployment backend -n lab04-$STUDENT_NAME --replicas=1
-kubectl scale deployment backend -n lab04-$STUDENT_NAME --replicas=3
+kubectl scale deployment backend -n lab08-$STUDENT_NAME --replicas=1
+kubectl scale deployment backend -n lab08-$STUDENT_NAME --replicas=3
 ```
 
 > ✅ **Checkpoint:** Endpoints update dynamically as pods scale. Both Endpoints and EndpointSlices reflect the same pod IPs, but EndpointSlices show additional metadata per endpoint.
@@ -152,8 +152,8 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < frontend-nodeport.yaml | kubectl apply -f -
-kubectl get svc frontend-nodeport -n lab04-$STUDENT_NAME
-NODE_PORT=$(kubectl get svc frontend-nodeport -n lab04-$STUDENT_NAME -o jsonpath='{.spec.ports[0].nodePort}')
+kubectl get svc frontend-nodeport -n lab08-$STUDENT_NAME
+NODE_PORT=$(kubectl get svc frontend-nodeport -n lab08-$STUDENT_NAME -o jsonpath='{.spec.ports[0].nodePort}')
 echo "NodePort assigned: $NODE_PORT"
 ```
 
@@ -174,12 +174,12 @@ Compare DNS responses between normal and headless Services:
 
 ```bash
 # ClusterIP Service - returns the virtual IP
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
-  dig backend-svc.lab04-$STUDENT_NAME.svc.cluster.local +short
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- \
+  dig backend-svc.lab08-$STUDENT_NAME.svc.cluster.local +short
 
 # Headless Service - returns individual pod IPs
-kubectl exec $FRONTEND_POD -n lab04-$STUDENT_NAME -- \
-  dig backend-headless.lab04-$STUDENT_NAME.svc.cluster.local +short
+kubectl exec $FRONTEND_POD -n lab08-$STUDENT_NAME -- \
+  dig backend-headless.lab08-$STUDENT_NAME.svc.cluster.local +short
 ```
 
 > ✅ **Checkpoint:** ClusterIP returns 1 virtual IP. Headless returns all pod IPs directly, letting the client choose which pod to connect to.
@@ -194,8 +194,8 @@ Expose the frontend through an AWS load balancer:
 envsubst '$STUDENT_NAME' < frontend-lb.yaml | kubectl apply -f -
 
 # Wait 2-3 minutes for AWS to provision the load balancer, then:
-kubectl get svc frontend-lb -n lab04-$STUDENT_NAME
-LB_HOST=$(kubectl get svc frontend-lb -n lab04-$STUDENT_NAME \
+kubectl get svc frontend-lb -n lab08-$STUDENT_NAME
+LB_HOST=$(kubectl get svc frontend-lb -n lab08-$STUDENT_NAME \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 curl -s --max-time 10 http://$LB_HOST | head -5
 ```
@@ -203,7 +203,7 @@ curl -s --max-time 10 http://$LB_HOST | head -5
 > ⚠️ **Each LoadBalancer Service provisions a real AWS load balancer (billed hourly).** Delete it as soon as you've tested it:
 
 ```bash
-kubectl delete svc frontend-lb -n lab04-$STUDENT_NAME
+kubectl delete svc frontend-lb -n lab08-$STUDENT_NAME
 ```
 
 ---
@@ -212,7 +212,7 @@ kubectl delete svc frontend-lb -n lab04-$STUDENT_NAME
 
 ```bash
 kubectl config set-context --current --namespace=default
-kubectl delete namespace lab04-$STUDENT_NAME
+kubectl delete namespace lab08-$STUDENT_NAME
 ```
 
 ---

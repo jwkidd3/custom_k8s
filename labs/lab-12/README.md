@@ -38,7 +38,7 @@ kubectl config set-context --current --namespace=default
 Create a namespace and examine the built-in ClusterRoles:
 
 ```bash
-kubectl create namespace lab07-$STUDENT_NAME
+kubectl create namespace lab12-$STUDENT_NAME
 
 kubectl get clusterroles | head -20
 
@@ -60,7 +60,7 @@ Apply the manifest and create a ServiceAccount:
 
 ```bash
 envsubst '$STUDENT_NAME' < pod-reader-role.yaml | kubectl apply -f -
-kubectl create serviceaccount pod-viewer -n lab07-$STUDENT_NAME
+kubectl create serviceaccount pod-viewer -n lab12-$STUDENT_NAME
 ```
 
 <!-- Creates a RoleBinding connecting the pod-viewer SA to the pod-reader Role -->
@@ -76,8 +76,8 @@ envsubst '$STUDENT_NAME' < pod-reader-binding.yaml | kubectl apply -f -
 ## Step 3: Test Permissions with kubectl auth can-i
 
 ```bash
-kubectl auth can-i --list -n lab07-$STUDENT_NAME \
-  --as=system:serviceaccount:lab07-$STUDENT_NAME:pod-viewer
+kubectl auth can-i --list -n lab12-$STUDENT_NAME \
+  --as=system:serviceaccount:lab12-$STUDENT_NAME:pod-viewer
 ```
 
 > ✅ **Checkpoint:** The lines **from your Role** are `pods` → `[get list watch]` and `pods/log` → `[get]`.
@@ -96,14 +96,14 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < rbac-test-pod.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/rbac-test -n lab07-$STUDENT_NAME --timeout=60s
+kubectl wait --for=condition=Ready pod/rbac-test -n lab12-$STUDENT_NAME --timeout=60s
 
 # This should SUCCEED
-kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl get pods -n lab07-$STUDENT_NAME
+kubectl exec rbac-test -n lab12-$STUDENT_NAME -- kubectl get pods -n lab12-$STUDENT_NAME
 
 # This should FAIL with Forbidden
-kubectl exec rbac-test -n lab07-$STUDENT_NAME -- kubectl create deployment \
-  test --image=nginx -n lab07-$STUDENT_NAME
+kubectl exec rbac-test -n lab12-$STUDENT_NAME -- kubectl create deployment \
+  test --image=nginx -n lab12-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** `get pods` succeeds; `create deployment` fails with Forbidden.
@@ -118,7 +118,7 @@ Apply the manifest and create a ServiceAccount:
 
 ```bash
 envsubst '$STUDENT_NAME' < cluster-reader-role.yaml | kubectl apply -f -
-kubectl create serviceaccount cluster-viewer -n lab07-$STUDENT_NAME
+kubectl create serviceaccount cluster-viewer -n lab12-$STUDENT_NAME
 ```
 
 Bind it with a ClusterRoleBinding:
@@ -132,11 +132,11 @@ envsubst '$STUDENT_NAME' < cluster-reader-binding.yaml | kubectl apply -f -
 
 # Test cross-namespace read (should be YES)
 kubectl auth can-i list pods -n kube-system \
-  --as=system:serviceaccount:lab07-$STUDENT_NAME:cluster-viewer
+  --as=system:serviceaccount:lab12-$STUDENT_NAME:cluster-viewer
 
 # Test delete (should be NO)
 kubectl auth can-i delete pods -n kube-system \
-  --as=system:serviceaccount:lab07-$STUDENT_NAME:cluster-viewer
+  --as=system:serviceaccount:lab12-$STUDENT_NAME:cluster-viewer
 ```
 
 > ✅ **Checkpoint:** `list pods` returns `yes` in any namespace; `delete pods` returns `no`.
@@ -148,9 +148,9 @@ kubectl auth can-i delete pods -n kube-system \
 Create a namespace with the **restricted** Pod Security Standard:
 
 ```bash
-kubectl create namespace lab07-restricted-$STUDENT_NAME
+kubectl create namespace lab12-restricted-$STUDENT_NAME
 
-kubectl label namespace lab07-restricted-$STUDENT_NAME \
+kubectl label namespace lab12-restricted-$STUDENT_NAME \
   pod-security.kubernetes.io/enforce=restricted \
   pod-security.kubernetes.io/enforce-version=latest \
   pod-security.kubernetes.io/warn=restricted \
@@ -190,13 +190,13 @@ Apply the manifest:
 ```bash
 envsubst '$STUDENT_NAME' < secure-pod.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod/secure-app \
-  -n lab07-restricted-$STUDENT_NAME --timeout=60s
+  -n lab12-restricted-$STUDENT_NAME --timeout=60s
 
 # Verify security settings inside the pod
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- id
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- touch /test-file
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- touch /tmp/test-file
-kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- \
+kubectl exec secure-app -n lab12-restricted-$STUDENT_NAME -- id
+kubectl exec secure-app -n lab12-restricted-$STUDENT_NAME -- touch /test-file
+kubectl exec secure-app -n lab12-restricted-$STUDENT_NAME -- touch /tmp/test-file
+kubectl exec secure-app -n lab12-restricted-$STUDENT_NAME -- \
   cat /proc/1/status | grep -i cap
 ```
 
@@ -216,8 +216,8 @@ kubectl exec secure-app -n lab07-restricted-$STUDENT_NAME -- \
 kubectl delete clusterrolebinding cluster-pod-reader-binding-$STUDENT_NAME
 kubectl delete clusterrole cluster-pod-reader-$STUDENT_NAME
 
-kubectl delete namespace lab07-$STUDENT_NAME
-kubectl delete namespace lab07-restricted-$STUDENT_NAME
+kubectl delete namespace lab12-$STUDENT_NAME
+kubectl delete namespace lab12-restricted-$STUDENT_NAME
 ```
 
 ---

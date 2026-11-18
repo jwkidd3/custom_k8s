@@ -8,7 +8,7 @@ LAB_DIR="$(cd "$SCRIPT_DIR/../lab-08" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 export STUDENT_NAME="test-$$"
-NS="lab04-$STUDENT_NAME"
+NS="lab08-$STUDENT_NAME"
 echo "=== Lab 8: Services & Discovery (ns: $NS) ==="
 echo ""
 

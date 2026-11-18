@@ -43,8 +43,8 @@ Approximately 30-40 minutes
 cd ~/environment/custom_k8s/labs/lab-11
 export STUDENT_NAME=<usernumber>
 echo "Student: $STUDENT_NAME"
-kubectl create namespace lab06-$STUDENT_NAME
-kubectl config set-context --current --namespace=lab06-$STUDENT_NAME
+kubectl create namespace lab11-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab11-$STUDENT_NAME
 ```
 
 Confirm the Gateway API is available and the controller is running:
@@ -64,8 +64,8 @@ kubectl get pods -n envoy-gateway-system
 envsubst '$STUDENT_NAME' < app-v1.yaml | kubectl apply -f -
 envsubst '$STUDENT_NAME' < app-v2.yaml | kubectl apply -f -
 
-kubectl get pods -n lab06-$STUDENT_NAME -l app=web
-kubectl get svc  -n lab06-$STUDENT_NAME
+kubectl get pods -n lab11-$STUDENT_NAME -l app=web
+kubectl get svc  -n lab11-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** 4 pods (2 for v1, 2 for v2) Running, and 2 ClusterIP services — `app-v1-svc` and `app-v2-svc`, both on port 80.
@@ -80,14 +80,14 @@ A `GatewayClass` selects the controller; a `Gateway` defines a listener and gets
 envsubst '$STUDENT_NAME' < gateway.yaml | kubectl apply -f -
 
 kubectl get gatewayclass lab-gateway-class-$STUDENT_NAME
-kubectl get gateway lab-gateway -n lab06-$STUDENT_NAME
+kubectl get gateway lab-gateway -n lab11-$STUDENT_NAME
 ```
 
 The load balancer takes ~1–2 minutes to provision. Wait for it and read its address:
 
 ```bash
-kubectl wait --for=condition=Programmed gateway/lab-gateway -n lab06-$STUDENT_NAME --timeout=180s
-GW=$(kubectl get gateway lab-gateway -n lab06-$STUDENT_NAME -o jsonpath='{.status.addresses[0].value}')
+kubectl wait --for=condition=Programmed gateway/lab-gateway -n lab11-$STUDENT_NAME --timeout=180s
+GW=$(kubectl get gateway lab-gateway -n lab11-$STUDENT_NAME -o jsonpath='{.status.addresses[0].value}')
 echo "Gateway load balancer: $GW"
 ```
 
@@ -103,7 +103,7 @@ Create an `HTTPRoute` that matches a hostname and splits traffic **80% to v1, 20
 envsubst '$STUDENT_NAME' < httproute.yaml | kubectl apply -f -
 
 # Verify the weights
-kubectl get httproute app-route -n lab06-$STUDENT_NAME \
+kubectl get httproute app-route -n lab11-$STUDENT_NAME \
   -o jsonpath='{.spec.rules[0].backendRefs[*].weight}{"\n"}'
 ```
 
@@ -128,7 +128,7 @@ Add a second `HTTPRoute` on the **same Gateway** that routes by **path** instead
 ```bash
 envsubst '$STUDENT_NAME' < httproute-path.yaml | kubectl apply -f -
 
-kubectl get httproute path-route -n lab06-$STUDENT_NAME \
+kubectl get httproute path-route -n lab11-$STUDENT_NAME \
   -o jsonpath='{range .spec.rules[*]}{.matches[0].path.value}{" -> "}{.backendRefs[0].name}{"\n"}{end}'
 ```
 
@@ -151,8 +151,8 @@ NetworkPolicies also restrict **outbound** traffic. Create one that limits egres
 ```bash
 envsubst '$STUDENT_NAME' < egress-policy.yaml | kubectl apply -f -
 
-kubectl get networkpolicy restrict-egress -n lab06-$STUDENT_NAME
-kubectl describe networkpolicy restrict-egress -n lab06-$STUDENT_NAME
+kubectl get networkpolicy restrict-egress -n lab11-$STUDENT_NAME
+kubectl describe networkpolicy restrict-egress -n lab11-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The policy selects pods with `run=egress-test`, allows DNS (port 53) and in-namespace HTTP (port 80) egress only.
@@ -163,15 +163,15 @@ Deploy a pod the policy applies to (label `run=egress-test`) and confirm the **d
 
 ```bash
 kubectl run egress-test --image=curlimages/curl --labels="run=egress-test" \
-  -n lab06-$STUDENT_NAME --restart=Never --command -- sleep 3600
-kubectl wait --for=condition=Ready pod/egress-test -n lab06-$STUDENT_NAME --timeout=60s
+  -n lab11-$STUDENT_NAME --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/egress-test -n lab11-$STUDENT_NAME --timeout=60s
 
 # BLOCKED — external egress (neither DNS nor in-namespace): hangs, then fails
-kubectl exec egress-test -n lab06-$STUDENT_NAME -- curl -s --max-time 5 https://1.1.1.1/ \
+kubectl exec egress-test -n lab11-$STUDENT_NAME -- curl -s --max-time 5 https://1.1.1.1/ \
   && echo "reached (unexpected)" || echo ">>> external egress blocked (as expected)"
 
 # ALLOWED paths the policy permits — DNS to kube-dns, and in-namespace HTTP
-kubectl exec egress-test -n lab06-$STUDENT_NAME -- nslookup kubernetes.default
+kubectl exec egress-test -n lab11-$STUDENT_NAME -- nslookup kubernetes.default
 ```
 
 > ✅ **Checkpoint:** The external request **times out** — once an Egress policy exists, only the explicitly-allowed destinations are reachable, everything else is denied. (Requires a CNI that enforces NetworkPolicies, e.g. Calico.)
@@ -179,7 +179,7 @@ kubectl exec egress-test -n lab06-$STUDENT_NAME -- nslookup kubernetes.default
 > **Real-world note:** the policy *allows* DNS and in-namespace HTTP, but whether those allow rules take effect — and whether **ClusterIP Service** traffic is matched at all — depends on how your CNI orders NetworkPolicy vs. kube-proxy's service NAT. On EKS with the VPC CNI + Calico this can be inconsistent, so the **deterministic** takeaway is: **external egress is denied**.
 
 ```bash
-kubectl delete pod egress-test -n lab06-$STUDENT_NAME
+kubectl delete pod egress-test -n lab11-$STUDENT_NAME
 ```
 
 ---
@@ -191,7 +191,7 @@ kubectl delete pod egress-test -n lab06-$STUDENT_NAME
 # The GatewayClass carries a "gateway-exists" finalizer while any Gateway
 # references it, so deleting the namespace first lets the GatewayClass delete
 # complete instead of hanging.
-kubectl delete namespace lab06-$STUDENT_NAME
+kubectl delete namespace lab11-$STUDENT_NAME
 
 # Now remove the cluster-scoped GatewayClass
 kubectl delete gatewayclass lab-gateway-class-$STUDENT_NAME --timeout=60s 2>/dev/null

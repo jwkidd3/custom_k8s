@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: lab04-$STUDENT_NAME
+  namespace: lab08-$STUDENT_NAME
 spec:
   replicas: 2
   selector:

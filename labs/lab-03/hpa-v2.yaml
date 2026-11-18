@@ -2,7 +2,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: php-apache-v2
-  namespace: lab02-$STUDENT_NAME
+  namespace: lab03-$STUDENT_NAME
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

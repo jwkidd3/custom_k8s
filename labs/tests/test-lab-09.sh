@@ -10,7 +10,7 @@ LAB_DIR="$(cd "$SCRIPT_DIR/../lab-09" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 export STUDENT_NAME="test-$$"
-NS="lab05-$STUDENT_NAME"
+NS="lab09-$STUDENT_NAME"
 echo "=== Lab 9: ConfigMaps & Secrets (ns: $NS) ==="
 echo ""
 

@@ -41,8 +41,8 @@ kubectl config set-context --current --namespace=default
 ## Step 1: Explore StorageClasses
 
 ```bash
-kubectl create namespace lab03-$STUDENT_NAME
-kubectl config set-context --current --namespace=lab03-$STUDENT_NAME
+kubectl create namespace lab07-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab07-$STUDENT_NAME
 kubectl get storageclass
 kubectl describe storageclass gp2
 ```
@@ -58,7 +58,7 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < lab-pvc.yaml | kubectl apply -f -
-kubectl get pvc -n lab03-$STUDENT_NAME
+kubectl get pvc -n lab07-$STUDENT_NAME
 ```
 
 > 📝 **Note:** Status will be Pending until a pod mounts this PVC.
@@ -72,14 +72,14 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < lab-writer-pod.yaml | kubectl apply -f -
-kubectl get pod data-writer -n lab03-$STUDENT_NAME -w
+kubectl get pod data-writer -n lab07-$STUDENT_NAME -w
 ```
 
 Verify the volume is bound and data was written:
 
 ```bash
-kubectl get pvc -n lab03-$STUDENT_NAME
-kubectl exec data-writer -n lab03-$STUDENT_NAME -- cat /data/testfile.txt
+kubectl get pvc -n lab07-$STUDENT_NAME
+kubectl exec data-writer -n lab07-$STUDENT_NAME -- cat /data/testfile.txt
 ```
 
 > ✅ **Checkpoint:** PVC status should be `Bound` and the file should contain your timestamp.
@@ -87,7 +87,7 @@ kubectl exec data-writer -n lab03-$STUDENT_NAME -- cat /data/testfile.txt
 Examine the dynamically created PV:
 
 ```bash
-PV_NAME=$(kubectl get pvc lab-data-pvc -n lab03-$STUDENT_NAME \
+PV_NAME=$(kubectl get pvc lab-data-pvc -n lab07-$STUDENT_NAME \
   -o jsonpath='{.spec.volumeName}')
 kubectl describe pv $PV_NAME
 ```
@@ -101,8 +101,8 @@ kubectl describe pv $PV_NAME
 Delete the pod, create a reader pod, and verify data survives:
 
 ```bash
-kubectl delete pod data-writer -n lab03-$STUDENT_NAME
-kubectl get pvc -n lab03-$STUDENT_NAME
+kubectl delete pod data-writer -n lab07-$STUDENT_NAME
+kubectl get pvc -n lab07-$STUDENT_NAME
 ```
 
 <!-- Creates a data-reader pod that reads from the same PVC -->
@@ -110,8 +110,8 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < lab-reader-pod.yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/data-reader -n lab03-$STUDENT_NAME --timeout=120s
-kubectl logs data-reader -n lab03-$STUDENT_NAME
+kubectl wait --for=condition=Ready pod/data-reader -n lab07-$STUDENT_NAME --timeout=120s
+kubectl logs data-reader -n lab07-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The original timestamp from `data-writer` should appear, proving data persists across pod deletion.
@@ -129,7 +129,7 @@ Apply the manifests:
 ```bash
 envsubst '$STUDENT_NAME' < lab-headless-svc.yaml | kubectl apply -f -
 envsubst '$STUDENT_NAME' < lab-statefulset.yaml | kubectl apply -f -
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+kubectl get pods -n lab07-$STUDENT_NAME -l app=web -w
 ```
 
 > ✅ **Checkpoint:** Pods are created sequentially: `web-0` must be Running before `web-1` starts. Press `Ctrl+C` once all three are Running.
@@ -139,12 +139,12 @@ kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
 ## Step 6: Verify Stable Identities
 
 ```bash
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -o wide
-kubectl get pvc -n lab03-$STUDENT_NAME
+kubectl get pods -n lab07-$STUDENT_NAME -l app=web -o wide
+kubectl get pvc -n lab07-$STUDENT_NAME
 
 # Test DNS resolution for a StatefulSet pod
-kubectl run dns-test --image=busybox:1.36 -n lab03-$STUDENT_NAME --rm -it \
-  --restart=Never -- nslookup web-0.web-headless.lab03-$STUDENT_NAME.svc.cluster.local
+kubectl run dns-test --image=busybox:1.36 -n lab07-$STUDENT_NAME --rm -it \
+  --restart=Never -- nslookup web-0.web-headless.lab07-$STUDENT_NAME.svc.cluster.local
 ```
 
 > ✅ **Checkpoint:** Each pod has a predictable name (`web-0`, `web-1`, `web-2`) and its own PVC (`web-data-web-0`, etc.). DNS resolves each pod individually.
@@ -156,27 +156,27 @@ kubectl run dns-test --image=busybox:1.36 -n lab03-$STUDENT_NAME --rm -it \
 Write unique content to each pod's volume:
 
 ```bash
-kubectl exec web-0 -n lab03-$STUDENT_NAME -- \
+kubectl exec web-0 -n lab07-$STUDENT_NAME -- \
   sh -c 'echo "Hello from web-0" > /usr/share/nginx/html/index.html'
-kubectl exec web-1 -n lab03-$STUDENT_NAME -- \
+kubectl exec web-1 -n lab07-$STUDENT_NAME -- \
   sh -c 'echo "Hello from web-1" > /usr/share/nginx/html/index.html'
-kubectl exec web-2 -n lab03-$STUDENT_NAME -- \
+kubectl exec web-2 -n lab07-$STUDENT_NAME -- \
   sh -c 'echo "Hello from web-2" > /usr/share/nginx/html/index.html'
 
 for i in 0 1 2; do
     echo "--- web-$i ---"
-    kubectl exec web-$i -n lab03-$STUDENT_NAME -- curl -s localhost
+    kubectl exec web-$i -n lab07-$STUDENT_NAME -- curl -s localhost
 done
 ```
 
 Delete a pod and verify its data survives:
 
 ```bash
-kubectl delete pod web-1 -n lab03-$STUDENT_NAME
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+kubectl delete pod web-1 -n lab07-$STUDENT_NAME
+kubectl get pods -n lab07-$STUDENT_NAME -l app=web -w
 
 # Once web-1 is Running again:
-kubectl exec web-1 -n lab03-$STUDENT_NAME -- curl -s localhost
+kubectl exec web-1 -n lab07-$STUDENT_NAME -- curl -s localhost
 ```
 
 > ✅ **Checkpoint:** The recreated `web-1` still serves "Hello from web-1" because it reattached to the same PVC.
@@ -187,18 +187,18 @@ kubectl exec web-1 -n lab03-$STUDENT_NAME -- curl -s localhost
 
 ```bash
 # Scale up to 5 replicas (ordered creation)
-kubectl scale statefulset web -n lab03-$STUDENT_NAME --replicas=5
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+kubectl scale statefulset web -n lab07-$STUDENT_NAME --replicas=5
+kubectl get pods -n lab07-$STUDENT_NAME -l app=web -w
 
 # Verify new PVCs
-kubectl get pvc -n lab03-$STUDENT_NAME
+kubectl get pvc -n lab07-$STUDENT_NAME
 
 # Scale down to 2 replicas (reverse order termination)
-kubectl scale statefulset web -n lab03-$STUDENT_NAME --replicas=2
-kubectl get pods -n lab03-$STUDENT_NAME -l app=web -w
+kubectl scale statefulset web -n lab07-$STUDENT_NAME --replicas=2
+kubectl get pods -n lab07-$STUDENT_NAME -l app=web -w
 
 # PVCs persist after scale-down
-kubectl get pvc -n lab03-$STUDENT_NAME
+kubectl get pvc -n lab07-$STUDENT_NAME
 ```
 
 > ⚠️ **Important:** PVCs are **not** deleted when a StatefulSet scales down. This protects data and allows reattachment on scale-up.
@@ -221,10 +221,10 @@ kubectl get storageclass gp2 -o jsonpath='{.allowVolumeExpansion}'
 kubectl patch storageclass gp2 -p '{"allowVolumeExpansion": true}'
 
 # Expand the PVC for web-0 from 1Gi to 2Gi
-kubectl patch pvc web-data-web-0 -n lab03-$STUDENT_NAME \
+kubectl patch pvc web-data-web-0 -n lab07-$STUDENT_NAME \
   -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
 
-kubectl get pvc web-data-web-0 -n lab03-$STUDENT_NAME -w
+kubectl get pvc web-data-web-0 -n lab07-$STUDENT_NAME -w
 ```
 
 > ⚠️ Volume expansion is a one-way operation -- you cannot shrink a PVC after expanding it.
@@ -235,9 +235,9 @@ kubectl get pvc web-data-web-0 -n lab03-$STUDENT_NAME -w
 
 ```bash
 kubectl config set-context --current --namespace=default
-kubectl delete statefulset web -n lab03-$STUDENT_NAME
-kubectl delete pvc --all -n lab03-$STUDENT_NAME
-kubectl delete namespace lab03-$STUDENT_NAME
+kubectl delete statefulset web -n lab07-$STUDENT_NAME
+kubectl delete pvc --all -n lab07-$STUDENT_NAME
+kubectl delete namespace lab07-$STUDENT_NAME
 ```
 
 ---

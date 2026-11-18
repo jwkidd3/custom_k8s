@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: lab-data-pvc
-  namespace: lab03-$STUDENT_NAME
+  namespace: lab07-$STUDENT_NAME
 spec:
   accessModes:
     - ReadWriteOnce

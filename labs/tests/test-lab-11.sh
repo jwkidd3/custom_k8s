@@ -11,7 +11,7 @@ LAB_DIR="$(cd "$SCRIPT_DIR/../lab-11" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 export STUDENT_NAME="test-$$"
-NS="lab06-$STUDENT_NAME"
+NS="lab11-$STUDENT_NAME"
 echo "=== Lab 11: Gateway API & Egress (ns: $NS) ==="
 echo ""
 

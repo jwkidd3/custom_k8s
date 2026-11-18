@@ -36,16 +36,16 @@ kubectl config set-context --current --namespace=default
 Create a namespace and a ConfigMap using literal key-value pairs:
 
 ```bash
-kubectl create namespace lab05-$STUDENT_NAME
+kubectl create namespace lab09-$STUDENT_NAME
 
 kubectl create configmap app-config \
     --from-literal=APP_ENV=production \
     --from-literal=APP_LOG_LEVEL=info \
     --from-literal=APP_MAX_CONNECTIONS=100 \
     --from-literal=APP_CACHE_TTL=3600 \
-    -n lab05-$STUDENT_NAME
+    -n lab09-$STUDENT_NAME
 
-kubectl get configmap app-config -n lab05-$STUDENT_NAME -o yaml
+kubectl get configmap app-config -n lab09-$STUDENT_NAME -o yaml
 ```
 
 Now create configuration files and load them into a ConfigMap. The `nginx.conf` file is static, while `app.properties` contains your student name:
@@ -57,7 +57,7 @@ envsubst '$STUDENT_NAME' < app.properties > /tmp/app.properties
 kubectl create configmap app-files \
     --from-file=nginx.conf=/tmp/nginx.conf \
     --from-file=app.properties=/tmp/app.properties \
-    -n lab05-$STUDENT_NAME
+    -n lab09-$STUDENT_NAME
 ```
 
 ---
@@ -72,7 +72,7 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < pod-envfrom.yaml | kubectl apply -f -
-kubectl logs env-from-demo -n lab05-$STUDENT_NAME | grep APP_
+kubectl logs env-from-demo -n lab09-$STUDENT_NAME | grep APP_
 ```
 
 ### Using valueFrom (inject specific keys with renaming)
@@ -83,7 +83,7 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < pod-valuefrom.yaml | kubectl apply -f -
-kubectl logs value-from-demo -n lab05-$STUDENT_NAME
+kubectl logs value-from-demo -n lab09-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** Output is `Env=production Log=info`.
@@ -101,13 +101,13 @@ Apply the manifest:
 ```bash
 envsubst '$STUDENT_NAME' < pod-volume-mount.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod/volume-mount-demo \
-    -n lab05-$STUDENT_NAME --timeout=60s
+    -n lab09-$STUDENT_NAME --timeout=60s
 
-kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
+kubectl exec volume-mount-demo -n lab09-$STUDENT_NAME -- \
     cat /etc/nginx/conf.d/default.conf
-kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
+kubectl exec volume-mount-demo -n lab09-$STUDENT_NAME -- \
     cat /etc/app/app.properties
-kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
+kubectl exec volume-mount-demo -n lab09-$STUDENT_NAME -- \
     curl -s http://localhost/health
 ```
 
@@ -123,10 +123,10 @@ kubectl exec volume-mount-demo -n lab05-$STUDENT_NAME -- \
 kubectl create secret generic db-credentials \
     --from-literal=DB_USERNAME=app_user \
     --from-literal=DB_PASSWORD='S3cur3P@ssw0rd!' \
-    --from-literal=DB_HOST=postgres-svc.lab05-$STUDENT_NAME.svc.cluster.local \
-    -n lab05-$STUDENT_NAME
+    --from-literal=DB_HOST=postgres-svc.lab09-$STUDENT_NAME.svc.cluster.local \
+    -n lab09-$STUDENT_NAME
 
-kubectl get secret db-credentials -n lab05-$STUDENT_NAME \
+kubectl get secret db-credentials -n lab09-$STUDENT_NAME \
     -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
 ```
 
@@ -135,12 +135,12 @@ kubectl get secret db-credentials -n lab05-$STUDENT_NAME \
 ```bash
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout tls.key -out tls.crt \
-    -subj "/CN=app.lab05-$STUDENT_NAME.local/O=Lab"
+    -subj "/CN=app.lab09-$STUDENT_NAME.local/O=Lab"
 
 kubectl create secret tls app-tls \
     --cert=tls.crt \
     --key=tls.key \
-    -n lab05-$STUDENT_NAME
+    -n lab09-$STUDENT_NAME
 ```
 
 ---
@@ -155,7 +155,7 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < pod-secret-env.yaml | kubectl apply -f -
-kubectl logs secret-env-demo -n lab05-$STUDENT_NAME
+kubectl logs secret-env-demo -n lab09-$STUDENT_NAME
 ```
 
 ### Secret as Volume Mount
@@ -166,8 +166,8 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < pod-secret-volume.yaml | kubectl apply -f -
-kubectl logs secret-vol-demo -n lab05-$STUDENT_NAME
-kubectl exec secret-vol-demo -n lab05-$STUDENT_NAME -- cat /etc/db-creds/DB_USERNAME
+kubectl logs secret-vol-demo -n lab09-$STUDENT_NAME
+kubectl exec secret-vol-demo -n lab09-$STUDENT_NAME -- cat /etc/db-creds/DB_USERNAME
 ```
 
 > ✅ **Checkpoint:** Secret files are mounted with `0400` permissions. (A plain `ls -l` shows the keys as `lrwxrwxrwx` symlinks — that's Kubernetes' atomic-writer layout; the `0400` applies to the real files they point to, which `ls -lL` dereferences to.)
@@ -187,7 +187,7 @@ envsubst '$STUDENT_NAME' < immutable-config.yaml | kubectl apply -f -
 Inspect the ConfigMap and confirm it is immutable:
 
 ```bash
-kubectl get configmap immutable-app-config -n lab05-$STUDENT_NAME -o yaml
+kubectl get configmap immutable-app-config -n lab09-$STUDENT_NAME -o yaml
 ```
 
 > Note the `immutable: true` field and the two data keys: `APP_VERSION` and `FEATURE_FLAGS`.
@@ -195,7 +195,7 @@ kubectl get configmap immutable-app-config -n lab05-$STUDENT_NAME -o yaml
 Now attempt to update a value:
 
 ```bash
-kubectl patch configmap immutable-app-config -n lab05-$STUDENT_NAME \
+kubectl patch configmap immutable-app-config -n lab09-$STUDENT_NAME \
     --type merge -p '{"data":{"APP_VERSION":"3.0.0"}}'
 ```
 
@@ -212,24 +212,24 @@ Apply the projected-volume pod:
 ```bash
 envsubst '$STUDENT_NAME' < pod-projected.yaml | kubectl apply -f -
 kubectl wait --for=condition=Ready pod/projected-demo \
-    -n lab05-$STUDENT_NAME --timeout=60s
+    -n lab09-$STUDENT_NAME --timeout=60s
 ```
 
 List the contents of the projected mount and verify each source:
 
 ```bash
 # ConfigMap value (from app-config)
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/APP_ENV
+kubectl exec projected-demo -n lab09-$STUDENT_NAME -- cat /etc/projected/APP_ENV
 
 # Secret value (from db-credentials)
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/DB_USERNAME
+kubectl exec projected-demo -n lab09-$STUDENT_NAME -- cat /etc/projected/DB_USERNAME
 
 # Downward API values
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/namespace
-kubectl exec projected-demo -n lab05-$STUDENT_NAME -- cat /etc/projected/labels
+kubectl exec projected-demo -n lab09-$STUDENT_NAME -- cat /etc/projected/namespace
+kubectl exec projected-demo -n lab09-$STUDENT_NAME -- cat /etc/projected/labels
 ```
 
-> ✅ **Checkpoint:** `APP_ENV` returns `production`, `DB_USERNAME` returns `app_user`, and `namespace` returns `lab05-<usernumber>`. All four files coexist under `/etc/projected`.
+> ✅ **Checkpoint:** `APP_ENV` returns `production`, `DB_USERNAME` returns `app_user`, and `namespace` returns `lab09-<usernumber>`. All four files coexist under `/etc/projected`.
 
 ---
 
@@ -270,17 +270,17 @@ envsubst '$STUDENT_NAME' < external-secret.yaml | kubectl apply -f -
 
 ```bash
 # Check ExternalSecret status (should show SecretSynced)
-kubectl get externalsecret db-external -n lab05-$STUDENT_NAME
+kubectl get externalsecret db-external -n lab09-$STUDENT_NAME
 
 # View the Kubernetes Secret that ESO created
-kubectl get secret db-from-vault -n lab05-$STUDENT_NAME
+kubectl get secret db-from-vault -n lab09-$STUDENT_NAME
 
 # Decode the synced values
-kubectl get secret db-from-vault -n lab05-$STUDENT_NAME \
+kubectl get secret db-from-vault -n lab09-$STUDENT_NAME \
     -o jsonpath='{.data.DB_USERNAME}' | base64 -d
 echo
 
-kubectl get secret db-from-vault -n lab05-$STUDENT_NAME \
+kubectl get secret db-from-vault -n lab09-$STUDENT_NAME \
     -o jsonpath='{.data.DB_HOST}' | base64 -d
 echo
 ```
@@ -292,7 +292,7 @@ echo
 ## Clean Up
 
 ```bash
-kubectl delete namespace lab05-$STUDENT_NAME
+kubectl delete namespace lab09-$STUDENT_NAME
 rm -f tls.key tls.crt /tmp/nginx.conf /tmp/app.properties
 ```
 

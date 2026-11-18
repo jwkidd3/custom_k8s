@@ -5,7 +5,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: cluster-viewer
-  namespace: lab07-$STUDENT_NAME
+  namespace: lab12-$STUDENT_NAME
 roleRef:
   kind: ClusterRole
   name: cluster-pod-reader-$STUDENT_NAME

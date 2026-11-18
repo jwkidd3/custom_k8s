@@ -11,7 +11,7 @@ source "$SCRIPT_DIR/lib.sh"
 
 LAB_DIR="$(cd "$SCRIPT_DIR/../lab-03" && pwd)"
 export STUDENT_NAME="test-$$"
-NS="lab02-$STUDENT_NAME"
+NS="lab03-$STUDENT_NAME"
 echo "=== Lab 3: Autoscaling (ns: $NS) ==="
 echo ""
 

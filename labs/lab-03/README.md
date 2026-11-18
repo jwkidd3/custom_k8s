@@ -54,8 +54,8 @@ kubectl top nodes
 ## Step 2: Deploy a CPU-Intensive Application
 
 ```bash
-kubectl create namespace lab02-$STUDENT_NAME
-kubectl config set-context --current --namespace=lab02-$STUDENT_NAME
+kubectl create namespace lab03-$STUDENT_NAME
+kubectl config set-context --current --namespace=lab03-$STUDENT_NAME
 ```
 
 <!-- Creates a php-apache Deployment with CPU requests/limits for HPA testing -->
@@ -64,7 +64,7 @@ Apply the manifest:
 ```bash
 envsubst '$STUDENT_NAME' < php-apache-deployment.yaml | kubectl apply -f -
 kubectl expose deployment php-apache --port=80 --target-port=80
-kubectl get all -n lab02-$STUDENT_NAME
+kubectl get all -n lab03-$STUDENT_NAME
 ```
 
 ---
@@ -76,10 +76,10 @@ kubectl autoscale deployment php-apache \
   --cpu-percent=50 \
   --min=1 \
   --max=10 \
-  -n lab02-$STUDENT_NAME
+  -n lab03-$STUDENT_NAME
 
-kubectl get hpa -n lab02-$STUDENT_NAME
-kubectl describe hpa php-apache -n lab02-$STUDENT_NAME
+kubectl get hpa -n lab03-$STUDENT_NAME
+kubectl describe hpa php-apache -n lab03-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The HPA should show `TARGETS: <current>/50%`, `MINPODS: 1`, `MAXPODS: 10`, `REPLICAS: 1`. The current value may show `<unknown>/50%` for 15-30 seconds while metrics are collected.
@@ -94,15 +94,15 @@ Run a load generator in a separate pod:
 kubectl run load-generator \
   --image=busybox:1.36 \
   --restart=Never \
-  -n lab02-$STUDENT_NAME \
+  -n lab03-$STUDENT_NAME \
   -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://php-apache; done"
 ```
 
 Verify the load generator is running:
 
 ```bash
-kubectl get pod load-generator -n lab02-$STUDENT_NAME
-kubectl logs load-generator -n lab02-$STUDENT_NAME --tail=5
+kubectl get pod load-generator -n lab03-$STUDENT_NAME
+kubectl logs load-generator -n lab03-$STUDENT_NAME --tail=5
 ```
 
 > ✅ **Checkpoint:** The pod should be in `Running` state and logs should show the php-apache response (`OK!`).
@@ -120,23 +120,23 @@ In your **second terminal**, watch the HPA and pods respond:
 export STUDENT_NAME=<usernumber>
 
 # Watch HPA status (updates every 15 seconds)
-kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
+kubectl get hpa php-apache -n lab03-$STUDENT_NAME --watch
 
 # In another terminal, watch pods scale up
-kubectl get pods -n lab02-$STUDENT_NAME --watch
+kubectl get pods -n lab03-$STUDENT_NAME --watch
 ```
 
-> ✅ **Checkpoint:** Within 1-3 minutes, TARGETS should increase above 50% and REPLICAS should scale up (up to 10). Check HPA events with `kubectl describe hpa php-apache -n lab02-$STUDENT_NAME`.
+> ✅ **Checkpoint:** Within 1-3 minutes, TARGETS should increase above 50% and REPLICAS should scale up (up to 10). Check HPA events with `kubectl describe hpa php-apache -n lab03-$STUDENT_NAME`.
 
 ---
 
 ## Step 6: Stop Load and Observe Scale-Down
 
 ```bash
-kubectl delete pod load-generator -n lab02-$STUDENT_NAME
+kubectl delete pod load-generator -n lab03-$STUDENT_NAME
 
 # Watch the HPA scale down (~5 minutes)
-kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
+kubectl get hpa php-apache -n lab03-$STUDENT_NAME --watch
 ```
 
 > ✅ **Checkpoint:** After approximately 5 minutes, REPLICAS should decrease back to 1. The default stabilization window is 5 minutes to prevent thrashing.
@@ -146,7 +146,7 @@ kubectl get hpa php-apache -n lab02-$STUDENT_NAME --watch
 ## Step 7: HPA with Custom Metrics (v2 API)
 
 ```bash
-kubectl delete hpa php-apache -n lab02-$STUDENT_NAME
+kubectl delete hpa php-apache -n lab03-$STUDENT_NAME
 ```
 
 <!-- Creates HPA v2 with CPU and memory metrics plus custom scaling behavior -->
@@ -154,7 +154,7 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < hpa-v2.yaml | kubectl apply -f -
-kubectl describe hpa php-apache-v2 -n lab02-$STUDENT_NAME
+kubectl describe hpa php-apache-v2 -n lab03-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The HPA should show two metrics targets: `cpu: <current>/50%` and `memory: <current>/80%`.
@@ -175,7 +175,7 @@ Apply the manifest:
 
 ```bash
 envsubst '$STUDENT_NAME' < vpa.yaml | kubectl apply -f -
-kubectl describe vpa php-apache-vpa -n lab02-$STUDENT_NAME
+kubectl describe vpa php-apache-vpa -n lab03-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The VPA status should show recommendation levels: **lowerBound**, **target**, and **upperBound**.
@@ -195,7 +195,7 @@ Apply the manifest:
 envsubst '$STUDENT_NAME' < inflate-deployment.yaml | kubectl apply -f -
 
 # Watch pods - some should be Pending if cluster is at capacity
-kubectl get pods -n lab02-$STUDENT_NAME -l app=inflate --watch
+kubectl get pods -n lab03-$STUDENT_NAME -l app=inflate --watch
 ```
 
 > ✅ **Checkpoint:** Some pods will show `Pending` with `FailedScheduling: insufficient cpu`. If Cluster Autoscaler is active, new nodes may join within 2-5 minutes.
@@ -212,7 +212,7 @@ Continue with **[Lab 4: Scheduling and Placement](../lab-04/README.md)** — nod
 
 ```bash
 kubectl config set-context --current --namespace=default
-kubectl delete namespace lab02-$STUDENT_NAME
+kubectl delete namespace lab03-$STUDENT_NAME
 ```
 
 ---

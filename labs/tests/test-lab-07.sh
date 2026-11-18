@@ -8,7 +8,7 @@ LAB_DIR="$(cd "$SCRIPT_DIR/../lab-07" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 export STUDENT_NAME="test-$$"
-NS="lab03-$STUDENT_NAME"
+NS="lab07-$STUDENT_NAME"
 echo "=== Lab 7: Storage & StatefulSets (ns: $NS) ==="
 echo ""
 

@@ -40,7 +40,7 @@ kubectl config set-context --current --namespace=default
 ## Step 1: Deploy a Three-Tier Application
 
 ```bash
-kubectl create namespace lab08-$STUDENT_NAME
+kubectl create namespace lab13-$STUDENT_NAME
 ```
 
 ### Deploy the Database Tier
@@ -63,8 +63,8 @@ Apply the manifests:
 envsubst '$STUDENT_NAME' < backend.yaml | kubectl apply -f -
 envsubst '$STUDENT_NAME' < frontend.yaml | kubectl apply -f -
 
-kubectl wait --for=condition=Ready pod --all -n lab08-$STUDENT_NAME --timeout=60s
-kubectl get pods -n lab08-$STUDENT_NAME -o wide --show-labels
+kubectl wait --for=condition=Ready pod --all -n lab13-$STUDENT_NAME --timeout=60s
+kubectl get pods -n lab13-$STUDENT_NAME -o wide --show-labels
 ```
 
 ---
@@ -74,14 +74,14 @@ kubectl get pods -n lab08-$STUDENT_NAME -o wide --show-labels
 Confirm all pods can communicate (all should succeed):
 
 ```bash
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec frontend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab13-$STUDENT_NAME.svc.cluster.local:80
 
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec frontend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab13-$STUDENT_NAME.svc.cluster.local:80
 
-kubectl exec database -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec database -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://frontend.lab13-$STUDENT_NAME.svc.cluster.local:80
 ```
 
 ---
@@ -102,16 +102,16 @@ envsubst '$STUDENT_NAME' < deny-all-ingress.yaml | kubectl apply -f -
 
 ```bash
 # All should FAIL / timeout
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec frontend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab13-$STUDENT_NAME.svc.cluster.local:80
 echo "Exit code: $?"
 
-kubectl exec backend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec backend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab13-$STUDENT_NAME.svc.cluster.local:80
 echo "Exit code: $?"
 
-kubectl exec database -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec database -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://frontend.lab13-$STUDENT_NAME.svc.cluster.local:80
 echo "Exit code: $?"
 ```
 
@@ -129,12 +129,12 @@ Apply the manifest:
 envsubst '$STUDENT_NAME' < allow-frontend-to-backend.yaml | kubectl apply -f -
 
 # Frontend -> Backend (should now SUCCEED)
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec frontend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab13-$STUDENT_NAME.svc.cluster.local:80
 
 # Database -> Backend (should still FAIL)
-kubectl exec database -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec database -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab13-$STUDENT_NAME.svc.cluster.local:80
 ```
 
 > ✅ **Checkpoint:** Frontend to backend succeeds; database to backend times out.
@@ -151,12 +151,12 @@ Apply the manifest:
 envsubst '$STUDENT_NAME' < allow-backend-to-database.yaml | kubectl apply -f -
 
 # Backend -> Database (should now SUCCEED)
-kubectl exec backend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec backend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab13-$STUDENT_NAME.svc.cluster.local:80
 
 # Frontend -> Database (should still FAIL)
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://database.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec frontend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://database.lab13-$STUDENT_NAME.svc.cluster.local:80
 ```
 
 > ✅ **Checkpoint:** Backend to database succeeds; frontend to database times out.
@@ -168,29 +168,29 @@ kubectl exec frontend -n lab08-$STUDENT_NAME -- \
 ```bash
 echo "=== ALLOWED PATHS ==="
 echo -n "Frontend -> Backend: "
-kubectl exec frontend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+kubectl exec frontend -n lab13-$STUDENT_NAME -- curl -s -o /dev/null \
   -w "%{http_code}" --max-time 3 \
   http://backend:80 2>/dev/null || echo "BLOCKED"
 
 echo -n "Backend -> Database: "
-kubectl exec backend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+kubectl exec backend -n lab13-$STUDENT_NAME -- curl -s -o /dev/null \
   -w "%{http_code}" --max-time 3 \
   http://database:80 2>/dev/null || echo "BLOCKED"
 
 echo ""
 echo "=== BLOCKED PATHS ==="
 echo -n "Frontend -> Database: "
-kubectl exec frontend -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+kubectl exec frontend -n lab13-$STUDENT_NAME -- curl -s -o /dev/null \
   -w "%{http_code}" --max-time 3 \
   http://database:80 2>/dev/null || echo "BLOCKED"
 
 echo -n "Database -> Frontend: "
-kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+kubectl exec database -n lab13-$STUDENT_NAME -- curl -s -o /dev/null \
   -w "%{http_code}" --max-time 3 \
   http://frontend:80 2>/dev/null || echo "BLOCKED"
 
 echo -n "Database -> Backend: "
-kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
+kubectl exec database -n lab13-$STUDENT_NAME -- curl -s -o /dev/null \
   -w "%{http_code}" --max-time 3 \
   http://backend:80 2>/dev/null || echo "BLOCKED"
 ```
@@ -204,9 +204,9 @@ kubectl exec database -n lab08-$STUDENT_NAME -- curl -s -o /dev/null \
 First deploy a small client pod we'll reuse to test reachability. Keep it **running** (don't use a throwaway `--rm` pod) — a cold pod's first DNS lookup + connection can take several seconds and a tight `curl` timeout would look like a policy failure when it isn't:
 
 ```bash
-kubectl run test-client --image=curlimages/curl -n lab08-$STUDENT_NAME \
+kubectl run test-client --image=curlimages/curl -n lab13-$STUDENT_NAME \
   --restart=Never --command -- sleep 3600
-kubectl wait --for=condition=Ready pod/test-client -n lab08-$STUDENT_NAME --timeout=60s
+kubectl wait --for=condition=Ready pod/test-client -n lab13-$STUDENT_NAME --timeout=60s
 ```
 
 Now apply this intentionally broken policy and test from the client:
@@ -216,9 +216,9 @@ Now apply this intentionally broken policy and test from the client:
 ```bash
 envsubst '$STUDENT_NAME' < broken-policy.yaml | kubectl apply -f -
 
-kubectl exec test-client -n lab08-$STUDENT_NAME -- \
+kubectl exec test-client -n lab13-$STUDENT_NAME -- \
   curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
-  http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+  http://frontend.lab13-$STUDENT_NAME.svc.cluster.local:80
 ```
 
 > ⚠️ **Result: `HTTP 000` (the request times out).** Two bugs: (1) `from.podSelector` matches `tier: frontend` (self-referencing) -- should be `from: []` to allow all sources. (2) Port is `8080` but the frontend listens on `80`.
@@ -232,9 +232,9 @@ Apply the corrected policy and re-test with the **same** client pod:
 ```bash
 envsubst '$STUDENT_NAME' < fixed-policy.yaml | kubectl apply -f -
 
-kubectl exec test-client -n lab08-$STUDENT_NAME -- \
+kubectl exec test-client -n lab13-$STUDENT_NAME -- \
   curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 \
-  http://frontend.lab08-$STUDENT_NAME.svc.cluster.local:80
+  http://frontend.lab13-$STUDENT_NAME.svc.cluster.local:80
 ```
 
 > ✅ **Checkpoint:** The same client now gets **`HTTP 200`** — the fixed policy (`from: []`, port `80`) allows traffic from any source on the port the frontend actually serves. (`-o /dev/null -w "HTTP %{http_code}"` prints a clear status code instead of the raw HTML page.)
@@ -256,8 +256,8 @@ Apply a default deny-all egress policy, then selectively allow DNS:
 envsubst '$STUDENT_NAME' < deny-all-egress.yaml | kubectl apply -f -
 
 # Verify — outbound requests should now fail
-kubectl exec frontend -n lab08-$STUDENT_NAME -- \
-  curl -s --max-time 3 http://backend.lab08-$STUDENT_NAME.svc.cluster.local:80
+kubectl exec frontend -n lab13-$STUDENT_NAME -- \
+  curl -s --max-time 3 http://backend.lab13-$STUDENT_NAME.svc.cluster.local:80
 echo "Exit code: $?"
 ```
 
@@ -265,7 +265,7 @@ echo "Exit code: $?"
 # Allow DNS resolution (UDP port 53)
 envsubst '$STUDENT_NAME' < allow-dns-egress.yaml | kubectl apply -f -
 
-kubectl describe networkpolicy allow-dns-egress -n lab08-$STUDENT_NAME
+kubectl describe networkpolicy allow-dns-egress -n lab13-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The deny-all-egress policy blocks all outbound traffic. The allow-dns-egress policy permits DNS resolution on port 53.
@@ -279,7 +279,7 @@ Allow ingress from a monitoring namespace:
 ```bash
 envsubst '$STUDENT_NAME' < allow-monitoring-ingress.yaml | kubectl apply -f -
 
-kubectl describe networkpolicy allow-monitoring-ingress -n lab08-$STUDENT_NAME
+kubectl describe networkpolicy allow-monitoring-ingress -n lab13-$STUDENT_NAME
 ```
 
 > ✅ **Checkpoint:** The policy uses a `namespaceSelector` with `purpose: monitoring` to allow ingress on port 80 from pods in monitoring namespaces.
@@ -289,7 +289,7 @@ kubectl describe networkpolicy allow-monitoring-ingress -n lab08-$STUDENT_NAME
 ## Step 11: Clean Up
 
 ```bash
-kubectl delete namespace lab08-$STUDENT_NAME
+kubectl delete namespace lab13-$STUDENT_NAME
 ```
 
 ---
